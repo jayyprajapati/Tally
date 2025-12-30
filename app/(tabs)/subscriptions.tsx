@@ -4,10 +4,12 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { FlatList, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import CredentialReveal from '@/components/credential-reveal';
+import { Credential, getAllCredentials, maskCredentialValue } from '@/lib/db/credentials';
 import {
-    Subscription,
-    deleteSubscription,
-    getAllSubscriptions,
+  Subscription,
+  deleteSubscription,
+  getAllSubscriptions,
 } from '@/lib/db/subscriptions';
 
 const buildSampleSubscription = (): Subscription => ({
@@ -25,6 +27,7 @@ export default function SubscriptionsScreen() {
   const [items, setItems] = useState<Subscription[]>([]);
   const [loading, setLoading] = useState(false);
   const [editing, setEditing] = useState<Subscription | null>(null);
+  const [credentials, setCredentials] = useState<Credential[]>([]);
   const router = useRouter();
 
   const categoryMeta = useMemo(
@@ -51,15 +54,30 @@ export default function SubscriptionsScreen() {
     }
   }, []);
 
+  const loadCredentials = useCallback(async () => {
+    const list = await getAllCredentials();
+    setCredentials(list);
+  }, []);
+
   useEffect(() => {
     loadSubscriptions();
-  }, [loadSubscriptions]);
+    loadCredentials();
+  }, [loadSubscriptions, loadCredentials]);
 
   useFocusEffect(
     useCallback(() => {
       loadSubscriptions();
-    }, [loadSubscriptions]),
+      loadCredentials();
+    }, [loadSubscriptions, loadCredentials]),
   );
+
+  const credentialMap = useMemo(() => {
+    const map: Record<string, Credential> = {};
+    credentials.forEach((cred) => {
+      map[cred.id] = cred;
+    });
+    return map;
+  }, [credentials]);
 
   const handleAdd = () => {
     router.push('/add-subscription');
@@ -81,6 +99,8 @@ export default function SubscriptionsScreen() {
     const isLifetime = item.billingType === 'lifetime';
     const statusColor = item.status === 'active' ? '#DCFCE7' : '#E0F2FE';
     const statusTextColor = item.status === 'active' ? '#166534' : '#0F172A';
+    const linkedCredential = item.linkedCredentialId ? credentialMap[item.linkedCredentialId] : undefined;
+    const linkedMask = linkedCredential ? maskCredentialValue(linkedCredential) : 'None';
 
     return (
       <View style={[styles.card, isLifetime && styles.lifetimeCard]}>
@@ -115,6 +135,16 @@ export default function SubscriptionsScreen() {
           <Pressable style={[styles.actionButton, styles.deleteButton]} onPress={() => handleDelete(item.id)}>
             <Text style={[styles.actionText, styles.deleteText]}>Delete</Text>
           </Pressable>
+        </View>
+
+        <View style={styles.linkedRow}>
+          <Text style={styles.linkedLabel}>Linked Account</Text>
+          <CredentialReveal
+            value={linkedCredential?.value}
+            maskedValue={linkedMask}
+            textStyle={styles.linkedValue}
+            disabled={!linkedCredential}
+          />
         </View>
       </View>
     );
@@ -155,6 +185,15 @@ export default function SubscriptionsScreen() {
                 <Text style={styles.modalValue}>{editing.billingType}</Text>
                 <Text style={styles.modalLabel}>Status</Text>
                 <Text style={styles.modalValue}>{editing.status}</Text>
+                <Text style={styles.modalLabel}>Linked Account</Text>
+                <CredentialReveal
+                  value={editing.linkedCredentialId ? credentialMap[editing.linkedCredentialId]?.value : undefined}
+                  maskedValue={editing.linkedCredentialId && credentialMap[editing.linkedCredentialId]
+                    ? maskCredentialValue(credentialMap[editing.linkedCredentialId])
+                    : 'None'}
+                  textStyle={styles.modalValue}
+                  disabled={!editing.linkedCredentialId || !credentialMap[editing.linkedCredentialId]}
+                />
                 {editing.notes ? (
                   <>
                     <Text style={styles.modalLabel}>Notes</Text>
@@ -387,5 +426,24 @@ const styles = StyleSheet.create({
   },
   deleteText: {
     color: '#B91C1C',
+  },
+  linkedRow: {
+    marginTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#e5e7eb',
+    paddingTop: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  linkedLabel: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  linkedValue: {
+    fontSize: 14,
+    color: '#111827',
   },
 });

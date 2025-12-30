@@ -1,9 +1,11 @@
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
+import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
     Alert,
     KeyboardAvoidingView,
+    Modal,
     Platform,
     Pressable,
     ScrollView,
@@ -14,6 +16,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { Credential, getAllCredentials, maskCredentialValue } from '@/lib/db/credentials';
 import { addSubscription, Subscription } from '@/lib/db/subscriptions';
 
 const categories = ['General', 'Entertainment', 'Productivity', 'Fitness', 'Finance', 'Education', 'Other'];
@@ -33,6 +36,25 @@ export default function AddSubscriptionScreen() {
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
+  const [credentials, setCredentials] = useState<Credential[]>([]);
+  const [linkedCredentialId, setLinkedCredentialId] = useState<string | undefined>(undefined);
+  const [pickerVisible, setPickerVisible] = useState(false);
+
+  const loadCredentials = useCallback(async () => {
+    const list = await getAllCredentials();
+    setCredentials(list);
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadCredentials();
+    }, [loadCredentials]),
+  );
+
+  const selectedCredential = useMemo(
+    () => credentials.find((cred) => cred.id === linkedCredentialId),
+    [credentials, linkedCredentialId],
+  );
 
   const onSubmit = async () => {
     if (!name.trim()) {
@@ -58,6 +80,7 @@ export default function AddSubscriptionScreen() {
       amount: finalAmount,
       startDate: startDate.toISOString(),
       status,
+      linkedCredentialId,
       notes: notes.trim() ? notes.trim() : undefined,
     };
 
@@ -150,6 +173,19 @@ export default function AddSubscriptionScreen() {
           </View>
 
           <View style={styles.fieldGroup}>
+            <Text style={styles.label}>Linked Account</Text>
+            <Pressable style={styles.staticValue} onPress={() => setPickerVisible(true)}>
+              <Text style={styles.valueText}>
+                {selectedCredential
+                  ? `${selectedCredential.label} (${maskCredentialValue(selectedCredential)})`
+                  : credentials.length
+                    ? 'Choose account'
+                    : 'No credentials added'}
+              </Text>
+            </Pressable>
+          </View>
+
+          <View style={styles.fieldGroup}>
             <Text style={styles.label}>Start date</Text>
             <Pressable style={styles.staticValue} onPress={() => setShowPicker(true)}>
               <Text style={styles.dateText}>{startDate.toISOString().slice(0, 10)}</Text>
@@ -189,6 +225,50 @@ export default function AddSubscriptionScreen() {
           </Pressable>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      <Modal visible={pickerVisible} transparent animationType="slide" onRequestClose={() => setPickerVisible(false)}>
+        <View style={styles.pickerBackdrop}>
+          <View style={styles.pickerCard}>
+            <Text style={styles.pickerTitle}>Linked Account</Text>
+            {credentials.length ? (
+              <ScrollView style={styles.pickerList}>
+                {credentials.map((cred) => (
+                  <Pressable
+                    key={cred.id}
+                    style={[styles.pickerOption, linkedCredentialId === cred.id && styles.pickerOptionSelected]}
+                    onPress={() => {
+                      setLinkedCredentialId(cred.id);
+                      setPickerVisible(false);
+                    }}>
+                    <View style={styles.pickerTextBlock}>
+                      <Text style={styles.pickerLabel}>{cred.label}</Text>
+                      <Text style={styles.pickerMask}>{maskCredentialValue(cred)}</Text>
+                    </View>
+                    {linkedCredentialId === cred.id ? <Text style={styles.pickerCheck}>✓</Text> : null}
+                  </Pressable>
+                ))}
+              </ScrollView>
+            ) : (
+              <Text style={styles.noCredentials}>No credentials added</Text>
+            )}
+            <View style={styles.pickerActions}>
+              {linkedCredentialId ? (
+                <Pressable
+                  style={[styles.pickerButton, styles.clearButton]}
+                  onPress={() => {
+                    setLinkedCredentialId(undefined);
+                    setPickerVisible(false);
+                  }}>
+                  <Text style={styles.clearText}>Clear</Text>
+                </Pressable>
+              ) : null}
+              <Pressable style={[styles.pickerButton, styles.closeButton]} onPress={() => setPickerVisible(false)}>
+                <Text style={styles.closeText}>Close</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -286,6 +366,10 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#111827',
   },
+  valueText: {
+    fontSize: 16,
+    color: '#111827',
+  },
   submitButton: {
     marginTop: 8,
     paddingVertical: 14,
@@ -300,5 +384,91 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '700',
     fontSize: 16,
+  },
+  pickerBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  pickerCard: {
+    width: '100%',
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  pickerTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    marginBottom: 12,
+  },
+  pickerList: {
+    maxHeight: 260,
+    marginBottom: 12,
+  },
+  pickerOption: {
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  pickerOptionSelected: {
+    borderColor: '#111827',
+    backgroundColor: '#f9fafb',
+  },
+  pickerTextBlock: {
+    flex: 1,
+  },
+  pickerLabel: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  pickerMask: {
+    fontSize: 13,
+    color: '#6b7280',
+    marginTop: 4,
+  },
+  pickerCheck: {
+    fontSize: 16,
+    color: '#111827',
+    marginLeft: 12,
+    fontWeight: '700',
+  },
+  pickerActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 8,
+  },
+  pickerButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+  },
+  clearButton: {
+    backgroundColor: '#f3f4f6',
+  },
+  clearText: {
+    color: '#111827',
+    fontWeight: '700',
+  },
+  closeButton: {
+    backgroundColor: '#111827',
+  },
+  closeText: {
+    color: '#fff',
+    fontWeight: '700',
+  },
+  noCredentials: {
+    textAlign: 'center',
+    color: '#6b7280',
+    marginVertical: 16,
   },
 });
