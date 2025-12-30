@@ -1,15 +1,16 @@
 import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { FlatList, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import CredentialReveal from '@/components/credential-reveal';
 import { Credential, getAllCredentials, maskCredentialValue } from '@/lib/db/credentials';
 import {
-  Subscription,
-  deleteSubscription,
-  getAllSubscriptions,
+    Subscription,
+    deleteSubscription,
+    getAllSubscriptions,
+    updateSubscription,
 } from '@/lib/db/subscriptions';
 
 const buildSampleSubscription = (): Subscription => ({
@@ -23,10 +24,27 @@ const buildSampleSubscription = (): Subscription => ({
   notes: 'Tap delete to remove',
 });
 
+const formatCurrency = (value: number) =>
+  `₹${value.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+
+const categories = ['General', 'Entertainment', 'Productivity', 'Fitness', 'Finance', 'Education', 'Other'];
+const billingTypes: Subscription['billingType'][] = ['monthly', 'yearly', 'lifetime'];
+const statuses: Subscription['status'][] = ['active', 'wishlist'];
+
 export default function SubscriptionsScreen() {
   const [items, setItems] = useState<Subscription[]>([]);
   const [loading, setLoading] = useState(false);
   const [editing, setEditing] = useState<Subscription | null>(null);
+  const [editForm, setEditForm] = useState({
+    name: '',
+    amount: '',
+    category: 'General' as Subscription['category'],
+    billingType: 'monthly' as Subscription['billingType'],
+    status: 'active' as Subscription['status'],
+    notes: '',
+    startDate: new Date().toISOString().slice(0, 10),
+    linkedCredentialId: undefined as string | undefined,
+  });
   const [credentials, setCredentials] = useState<Credential[]>([]);
   const router = useRouter();
 
@@ -92,6 +110,52 @@ export default function SubscriptionsScreen() {
     setEditing(item);
   };
 
+  useEffect(() => {
+    if (editing) {
+      setEditForm({
+        name: editing.name,
+        amount: editing.amount ? String(editing.amount) : '',
+        category: editing.category,
+        billingType: editing.billingType,
+        status: editing.status,
+        notes: editing.notes ?? '',
+        startDate:
+          typeof editing.startDate === 'string'
+            ? editing.startDate.slice(0, 10)
+            : editing.startDate.toISOString().slice(0, 10),
+        linkedCredentialId: editing.linkedCredentialId,
+      });
+    }
+  }, [editing]);
+
+  const handleSaveEdit = async () => {
+    if (!editing) return;
+    if (!editForm.name.trim()) {
+      return;
+    }
+    const numericAmount = parseFloat(editForm.amount);
+    const needsAmount = editForm.billingType !== 'lifetime';
+    if (needsAmount && (Number.isNaN(numericAmount) || numericAmount <= 0)) {
+      return;
+    }
+
+    const updated: Subscription = {
+      ...editing,
+      name: editForm.name.trim() || editing.name,
+      category: editForm.category,
+      billingType: editForm.billingType,
+      amount: needsAmount ? numericAmount : editing.amount,
+      status: editForm.status,
+      startDate: editForm.startDate,
+      notes: editForm.notes.trim() ? editForm.notes.trim() : undefined,
+      linkedCredentialId: editForm.linkedCredentialId,
+    };
+
+    await updateSubscription(updated);
+    await loadSubscriptions();
+    setEditing(null);
+  };
+
   const closeEdit = () => setEditing(null);
 
   const renderItem = ({ item }: { item: Subscription }) => {
@@ -110,6 +174,7 @@ export default function SubscriptionsScreen() {
           </View>
           <View style={styles.headerTextGroup}>
             <Text style={styles.name}>{item.name}</Text>
+            {!isLifetime ? <Text style={styles.amount}>{formatCurrency(item.amount)}</Text> : null}
             <View style={styles.badgeRow}>
               <View style={[styles.categoryBadge, { backgroundColor: `${meta.color}22` }]}> 
                 <Text style={[styles.categoryText, { color: meta.color }]}>{item.category}</Text>
@@ -178,36 +243,90 @@ export default function SubscriptionsScreen() {
             {editing && (
               <>
                 <Text style={styles.modalLabel}>Name</Text>
-                <Text style={styles.modalValue}>{editing.name}</Text>
-                <Text style={styles.modalLabel}>Category</Text>
-                <Text style={styles.modalValue}>{editing.category}</Text>
-                <Text style={styles.modalLabel}>Billing</Text>
-                <Text style={styles.modalValue}>{editing.billingType}</Text>
-                <Text style={styles.modalLabel}>Status</Text>
-                <Text style={styles.modalValue}>{editing.status}</Text>
-                <Text style={styles.modalLabel}>Linked Account</Text>
-                <CredentialReveal
-                  value={editing.linkedCredentialId ? credentialMap[editing.linkedCredentialId]?.value : undefined}
-                  maskedValue={editing.linkedCredentialId && credentialMap[editing.linkedCredentialId]
-                    ? maskCredentialValue(credentialMap[editing.linkedCredentialId])
-                    : 'None'}
-                  textStyle={styles.modalValue}
-                  disabled={!editing.linkedCredentialId || !credentialMap[editing.linkedCredentialId]}
+                <TextInput
+                  value={editForm.name}
+                  onChangeText={(text) => setEditForm((prev) => ({ ...prev, name: text }))}
+                  style={styles.modalInput}
+                  placeholder="Name"
                 />
-                {editing.notes ? (
-                  <>
-                    <Text style={styles.modalLabel}>Notes</Text>
-                    <Text style={styles.modalValue}>{editing.notes}</Text>
-                  </>
-                ) : null}
+
+                <Text style={styles.modalLabel}>Amount</Text>
+                <TextInput
+                  value={editForm.amount}
+                  onChangeText={(text) => setEditForm((prev) => ({ ...prev, amount: text }))}
+                  style={styles.modalInput}
+                  placeholder="0"
+                  editable={editForm.billingType !== 'lifetime'}
+                  keyboardType="decimal-pad"
+                />
+
+                <Text style={styles.modalLabel}>Category</Text>
+                <View style={styles.chipRow}>
+                  {categories.map((cat) => (
+                    <Pressable
+                      key={cat}
+                      style={[styles.chip, editForm.category === cat && styles.chipSelected]}
+                      onPress={() => setEditForm((prev) => ({ ...prev, category: cat as Subscription['category'] }))}
+                    >
+                      <Text style={[styles.chipText, editForm.category === cat && styles.chipTextSelected]}>{cat}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+
+                <Text style={styles.modalLabel}>Billing</Text>
+                <View style={styles.segmentRow}>
+                  {billingTypes.map((type) => (
+                    <Pressable
+                      key={type}
+                      style={[styles.segment, editForm.billingType === type && styles.segmentSelected]}
+                      onPress={() => setEditForm((prev) => ({ ...prev, billingType: type }))}
+                    >
+                      <Text style={[styles.segmentText, editForm.billingType === type && styles.segmentTextSelected]}>
+                        {type}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+
+                <Text style={styles.modalLabel}>Status</Text>
+                <View style={styles.segmentRow}>
+                  {statuses.map((stat) => (
+                    <Pressable
+                      key={stat}
+                      style={[styles.segment, editForm.status === stat && styles.segmentSelected]}
+                      onPress={() => setEditForm((prev) => ({ ...prev, status: stat }))}
+                    >
+                      <Text style={[styles.segmentText, editForm.status === stat && styles.segmentTextSelected]}>
+                        {stat}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+
+                <Text style={styles.modalLabel}>Start date</Text>
+                <TextInput
+                  value={editForm.startDate}
+                  onChangeText={(text) => setEditForm((prev) => ({ ...prev, startDate: text }))}
+                  style={styles.modalInput}
+                  placeholder="YYYY-MM-DD"
+                />
+
+                <Text style={styles.modalLabel}>Notes</Text>
+                <TextInput
+                  value={editForm.notes}
+                  onChangeText={(text) => setEditForm((prev) => ({ ...prev, notes: text }))}
+                  style={[styles.modalInput, styles.modalMultiline]}
+                  multiline
+                  placeholder="Optional"
+                />
               </>
             )}
             <View style={styles.modalActions}>
               <Pressable style={[styles.modalButton, styles.modalSecondary]} onPress={closeEdit}>
                 <Text style={styles.modalSecondaryText}>Close</Text>
               </Pressable>
-              <Pressable style={[styles.modalButton, styles.modalPrimary]} onPress={closeEdit}>
-                <Text style={styles.modalPrimaryText}>Edit (coming soon)</Text>
+              <Pressable style={[styles.modalButton, styles.modalPrimary]} onPress={handleSaveEdit}>
+                <Text style={styles.modalPrimaryText}>Save</Text>
               </Pressable>
             </View>
           </View>
@@ -270,6 +389,11 @@ const styles = StyleSheet.create({
   name: {
     fontSize: 18,
     fontWeight: '700',
+  },
+  amount: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#0F172A',
   },
   badgeRow: {
     flexDirection: 'row',
@@ -369,10 +493,19 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#6B7280',
   },
-  modalValue: {
+  modalInput: {
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: '#fff',
     fontSize: 15,
     color: '#111827',
-    marginBottom: 6,
+  },
+  modalMultiline: {
+    minHeight: 80,
+    textAlignVertical: 'top',
   },
   modalActions: {
     flexDirection: 'row',

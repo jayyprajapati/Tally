@@ -1,7 +1,9 @@
 import { useFocusEffect } from '@react-navigation/native';
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Modal,
+  Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -139,6 +141,7 @@ export default function DashboardScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [includeWishlist, setIncludeWishlist] = useState(false);
   const [activeTab, setActiveTab] = useState<SpendTab>('overall');
+  const [categoryModal, setCategoryModal] = useState<{ category: string; entries: { item: Subscription; contribution: number }[] } | null>(null);
 
   const currentYear = new Date().getFullYear();
   const currentMonth = new Date().getMonth();
@@ -269,14 +272,23 @@ export default function DashboardScreen() {
 
   const availableYears = useMemo(() => {
     const years = new Set<number>();
+    let maxYear = currentYear;
     subscriptions.forEach((sub) => {
       const startYear = typeof sub.startDate === 'string' ? new Date(sub.startDate).getFullYear() : sub.startDate.getFullYear();
-      for (let y = startYear; y <= currentYear; y++) {
+      maxYear = Math.max(maxYear, startYear);
+      for (let y = startYear; y <= maxYear; y++) {
         years.add(y);
       }
     });
+    if (!years.size) years.add(currentYear);
     return Array.from(years).sort((a, b) => b - a);
   }, [subscriptions, currentYear]);
+
+  useEffect(() => {
+    if (!availableYears.includes(selectedYear)) {
+      setSelectedYear(availableYears[0]);
+    }
+  }, [availableYears, selectedYear]);
 
   const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -286,6 +298,52 @@ export default function DashboardScreen() {
     if (activeTab === 'yearly') return `Yearly Spend (${selectedYear})`;
     return '';
   };
+
+  const buildCategoryEntries = useCallback(
+    (category: string) => {
+      const base = includeWishlist
+        ? subscriptions
+        : subscriptions.filter((sub) => sub.status === 'active');
+
+      const entries: { item: Subscription; contribution: number }[] = [];
+
+      base.forEach((sub) => {
+        if (sub.category !== category) return;
+        if (sub.billingType === 'lifetime') return;
+
+        if (activeTab === 'overall') {
+          if (sub.billingType === 'monthly') {
+            const months = getMonthsInYear(sub.startDate, selectedYear);
+            if (months > 0) {
+              entries.push({ item: sub, contribution: sub.amount * months });
+            }
+          } else if (sub.billingType === 'yearly') {
+            const startYear = typeof sub.startDate === 'string' ? new Date(sub.startDate).getFullYear() : sub.startDate.getFullYear();
+            if (startYear === selectedYear) {
+              entries.push({ item: sub, contribution: sub.amount });
+            }
+          }
+        }
+
+        if (activeTab === 'monthly') {
+          if (sub.billingType !== 'monthly') return;
+          if (isSubscriptionActiveInMonth(sub.startDate, selectedYear, selectedMonth)) {
+            entries.push({ item: sub, contribution: sub.amount });
+          }
+        }
+
+        if (activeTab === 'yearly') {
+          if (sub.billingType !== 'yearly') return;
+          if (isSubscriptionActiveInYear(sub.startDate, selectedYear)) {
+            entries.push({ item: sub, contribution: sub.amount });
+          }
+        }
+      });
+
+      return entries;
+    },
+    [activeTab, includeWishlist, selectedMonth, selectedYear, subscriptions],
+  );
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -372,11 +430,15 @@ export default function DashboardScreen() {
                 <DonutChart data={analytics.slices} total={analytics.total} label="Spend" />
                 <View style={styles.legend}>
                   {analytics.slices.map((slice) => (
-                    <View key={slice.category} style={styles.legendRow}>
+                    <Pressable
+                      key={slice.category}
+                      style={styles.legendRow}
+                      onPress={() => setCategoryModal({ category: slice.category, entries: buildCategoryEntries(slice.category) })}
+                    >
                       <View style={[styles.legendSwatch, { backgroundColor: slice.color }]} />
                       <Text style={styles.legendLabel}>{slice.category}</Text>
                       <Text style={styles.legendValue}>{formatCurrency(slice.value)}</Text>
-                    </View>
+                    </Pressable>
                   ))}
                 </View>
               </View>
@@ -386,6 +448,37 @@ export default function DashboardScreen() {
           </>
         )}
       </ScrollView>
+
+      <Modal
+        visible={!!categoryModal}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setCategoryModal(null)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>{categoryModal?.category ?? ''}</Text>
+            <Text style={styles.modalSubtitle}>Subscriptions contributing to this category</Text>
+            <ScrollView style={styles.modalList}>
+              {categoryModal?.entries.map(({ item, contribution }) => (
+                <View key={item.id} style={styles.modalRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.modalItemName}>{item.name}</Text>
+                    <Text style={styles.modalItemMeta}>{item.billingType} • {item.status}</Text>
+                  </View>
+                  <Text style={styles.modalItemValue}>{formatCurrency(contribution)}</Text>
+                </View>
+              ))}
+              {!categoryModal?.entries.length ? (
+                <Text style={styles.modalEmpty}>No subscriptions found for this view.</Text>
+              ) : null}
+            </ScrollView>
+            <Pressable style={styles.modalCloseButton} onPress={() => setCategoryModal(null)}>
+              <Text style={styles.modalCloseText}>Close</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -526,5 +619,71 @@ const styles = StyleSheet.create({
     color: '#6b7280',
     textAlign: 'center',
     marginTop: 40,
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalCard: {
+    width: '100%',
+    borderRadius: 14,
+    backgroundColor: '#fff',
+    padding: 16,
+    gap: 8,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#0f172a',
+  },
+  modalSubtitle: {
+    fontSize: 13,
+    color: '#6b7280',
+    marginBottom: 6,
+  },
+  modalList: {
+    maxHeight: 300,
+    marginVertical: 6,
+  },
+  modalRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+  },
+  modalItemName: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#0f172a',
+  },
+  modalItemMeta: {
+    fontSize: 13,
+    color: '#6b7280',
+  },
+  modalItemValue: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#0f172a',
+  },
+  modalEmpty: {
+    textAlign: 'center',
+    color: '#6b7280',
+    paddingVertical: 20,
+  },
+  modalCloseButton: {
+    marginTop: 10,
+    paddingVertical: 12,
+    borderRadius: 10,
+    backgroundColor: '#0f172a',
+    alignItems: 'center',
+  },
+  modalCloseText: {
+    color: '#fff',
+    fontWeight: '700',
   },
 });

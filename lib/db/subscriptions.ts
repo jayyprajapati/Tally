@@ -100,6 +100,31 @@ export async function getAllSubscriptions(): Promise<Subscription[]> {
   return rows.map(toSubscription);
 }
 
+export async function updateSubscription(subscription: Subscription): Promise<void> {
+  const record = toStored(subscription);
+  if (!initialized) {
+    await initializeDatabase();
+  }
+  const db = await getDatabase();
+
+  await db.runAsync(
+    `UPDATE subscriptions
+      SET name = ?, category = ?, billingType = ?, amount = ?, startDate = ?, status = ?, linkedCredentialId = ?, notes = ?
+      WHERE id = ?;`,
+    [
+      record.name,
+      record.category,
+      record.billingType,
+      record.amount,
+      record.startDate,
+      record.status,
+      record.linkedCredentialId ?? null,
+      record.notes ?? null,
+      record.id,
+    ],
+  );
+}
+
 export async function deleteSubscription(id: string | number): Promise<void> {
   if (!initialized) {
     await initializeDatabase();
