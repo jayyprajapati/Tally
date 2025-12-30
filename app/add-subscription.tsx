@@ -1,7 +1,7 @@
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { useFocusEffect } from '@react-navigation/native';
-import { useRouter } from 'expo-router';
-import React, { useCallback, useMemo, useState } from 'react';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
     Alert,
     KeyboardAvoidingView,
@@ -17,7 +17,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Credential, getAllCredentials, maskCredentialValue } from '@/lib/db/credentials';
-import { addSubscription, Subscription } from '@/lib/db/subscriptions';
+import { Subscription, addSubscription, getSubscriptionById, updateSubscription } from '@/lib/db/subscriptions';
 
 const categories = ['General', 'Entertainment', 'Productivity', 'Fitness', 'Finance', 'Education', 'Other'];
 const billingTypes: Subscription['billingType'][] = ['monthly', 'yearly', 'lifetime'];
@@ -25,7 +25,8 @@ const statuses: Subscription['status'][] = ['active', 'wishlist'];
 
 export default function AddSubscriptionScreen() {
   const router = useRouter();
-  const todayIso = useMemo(() => new Date().toISOString(), []);
+  const { mode, id } = useLocalSearchParams<{ mode?: string; id?: string }>();
+  const isEdit = mode === 'edit' && !!id;
 
   const [name, setName] = useState('');
   const [category, setCategory] = useState<Subscription['category']>('General');
@@ -35,6 +36,7 @@ export default function AddSubscriptionScreen() {
   const [startDate, setStartDate] = useState<Date>(new Date());
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [hydrating, setHydrating] = useState<boolean>(isEdit);
   const [showPicker, setShowPicker] = useState(false);
   const [credentials, setCredentials] = useState<Credential[]>([]);
   const [linkedCredentialId, setLinkedCredentialId] = useState<string | undefined>(undefined);
@@ -51,12 +53,45 @@ export default function AddSubscriptionScreen() {
     }, [loadCredentials]),
   );
 
+  useEffect(() => {
+    if (!isEdit || !id) {
+      setHydrating(false);
+      return;
+    }
+
+    let active = true;
+    (async () => {
+      const existing = await getSubscriptionById(id);
+      if (!active) return;
+      if (!existing) {
+        Alert.alert('Not found', 'Subscription could not be loaded.');
+        router.back();
+        return;
+      }
+
+      setName(existing.name);
+      setCategory(existing.category as Subscription['category']);
+      setBillingType(existing.billingType);
+      setAmount(existing.billingType === 'lifetime' ? '' : String(existing.amount));
+      setStatus(existing.status);
+      setStartDate(new Date(existing.startDate));
+      setNotes(existing.notes ?? '');
+      setLinkedCredentialId(existing.linkedCredentialId);
+      setHydrating(false);
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [id, isEdit, router]);
+
   const selectedCredential = useMemo(
     () => credentials.find((cred) => cred.id === linkedCredentialId),
     [credentials, linkedCredentialId],
   );
 
   const onSubmit = async () => {
+    if (hydrating) return;
     if (!name.trim()) {
       Alert.alert('Name required', 'Please enter a subscription name.');
       return;
@@ -70,10 +105,11 @@ export default function AddSubscriptionScreen() {
       return;
     }
 
-    const finalAmount = Number.isNaN(numericAmount) ? 0 : numericAmount;
+    const resolvedAmount = Number.isNaN(numericAmount) ? 0 : numericAmount;
+    const finalAmount = needsAmount ? resolvedAmount : 0;
 
     const payload: Subscription = {
-      id: Date.now().toString(),
+      id: isEdit && id ? id : Date.now().toString(),
       name: name.trim(),
       category,
       billingType,
@@ -86,7 +122,11 @@ export default function AddSubscriptionScreen() {
 
     setSubmitting(true);
     try {
-      await addSubscription(payload);
+      if (isEdit) {
+        await updateSubscription(payload);
+      } else {
+        await addSubscription(payload);
+      }
       router.back();
     } catch (error) {
       console.warn('Failed to save subscription', error);
@@ -95,6 +135,16 @@ export default function AddSubscriptionScreen() {
       setSubmitting(false);
     }
   };
+
+  if (hydrating) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <View style={[styles.container, { flex: 1, justifyContent: 'center', alignItems: 'center' }]}>
+          <Text style={styles.label}>Loading subscription…</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -135,7 +185,12 @@ export default function AddSubscriptionScreen() {
               {billingTypes.map((type) => (
                 <Pressable
                   key={type}
-                  onPress={() => setBillingType(type)}
+                  onPress={() => {
+                    setBillingType(type);
+                    if (type === 'lifetime') {
+                      setAmount('');
+                    }
+                  }}
                   style={[styles.segment, billingType === type && styles.segmentSelected]}>
                   <Text style={[styles.segmentText, billingType === type && styles.segmentTextSelected]}>
                     {type.charAt(0).toUpperCase() + type.slice(1)}
@@ -153,6 +208,7 @@ export default function AddSubscriptionScreen() {
               placeholder="9.99"
               keyboardType="decimal-pad"
               style={styles.input}
+              editable={billingType !== 'lifetime'}
             />
           </View>
 
@@ -220,8 +276,11 @@ export default function AddSubscriptionScreen() {
             />
           </View>
 
-          <Pressable style={[styles.submitButton, submitting && styles.submitDisabled]} onPress={onSubmit} disabled={submitting}>
-            <Text style={styles.submitText}>{submitting ? 'Saving…' : 'Save subscription'}</Text>
+          <Pressable
+            style={[styles.submitButton, (submitting || hydrating) && styles.submitDisabled]}
+            onPress={onSubmit}
+            disabled={submitting || hydrating}>
+            <Text style={styles.submitText}>{submitting ? 'Saving…' : isEdit ? 'Save Changes' : 'Save subscription'}</Text>
           </Pressable>
         </ScrollView>
       </KeyboardAvoidingView>

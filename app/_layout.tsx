@@ -27,7 +27,6 @@ export default function RootLayout() {
         <Stack>
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="add-subscription" options={{ title: 'Add Subscription', presentation: 'modal' }} />
-          <Stack.Screen name="edit-subscription" options={{ title: 'Edit Subscription' }} />
         </Stack>
         <StatusBar style="auto" />
       </ThemeProvider>

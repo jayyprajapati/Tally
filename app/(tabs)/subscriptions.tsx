@@ -75,7 +75,7 @@ export default function SubscriptionsScreen() {
   }, [credentials]);
 
   const handleOpenEdit = (item: Subscription) => {
-    router.push({ pathname: '/edit-subscription', params: { id: String(item.id) } });
+    router.push({ pathname: '/add-subscription', params: { id: String(item.id), mode: 'edit' } });
   };
 
   const handleAdd = () => {
