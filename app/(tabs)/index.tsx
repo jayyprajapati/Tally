@@ -1,8 +1,17 @@
 import { useFocusEffect } from '@react-navigation/native';
 import React, { useCallback, useMemo, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Svg, { Circle, G, Path, Rect, Text as SvgText } from 'react-native-svg';
+import Svg, { Circle, Path, Text as SvgText } from 'react-native-svg';
 
 import { Subscription, getAllSubscriptions } from '@/lib/db/subscriptions';
 
@@ -24,34 +33,25 @@ type Slice = {
   color: string;
 };
 
-const MONTHS_IN_YEAR = 12;
+type SpendTab = 'overall' | 'monthly' | 'yearly';
 
-const normalizeMonthlyAmount = (subscription: Subscription): number => {
-  if (subscription.billingType === 'yearly') {
-    return subscription.amount / MONTHS_IN_YEAR;
-  }
-  if (subscription.billingType === 'monthly') {
-    return subscription.amount;
-  }
-  return 0;
-};
-
-const formatCurrency = (value: number) => `$${value.toFixed(2)}`;
+const formatCurrency = (value: number) => `₹${value.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
 
 const polarToCartesian = (cx: number, cy: number, r: number, angle: number) => ({
   x: cx + r * Math.cos(angle),
   y: cy + r * Math.sin(angle),
 });
 
-const DonutChart = ({ data, total }: { data: Slice[]; total: number }) => {
-  const size = 220;
+
+const DonutChart = ({ data, total, label }: { data: Slice[]; total: number; label: string }) => {
+  const size = 200;
   const radius = size / 2 - 6;
-  const innerRadius = 70;
+  const innerRadius = 60;
 
   if (!data.length || total <= 0) {
     return (
       <View style={styles.chartEmpty}>
-        <Text style={styles.chartEmptyText}>No recurring spend yet</Text>
+        <Text style={styles.chartEmptyText}>No data</Text>
       </View>
     );
   }
@@ -80,20 +80,20 @@ const DonutChart = ({ data, total }: { data: Slice[]; total: number }) => {
 
           return <Path key={slice.category} d={d} fill={slice.color} />;
         })}
-        <Circle cx={size / 2} cy={size / 2} r={innerRadius} fill="#f8f8f8" stroke="#e5e7eb" />
+        <Circle cx={size / 2} cy={size / 2} r={innerRadius} fill="#f8f8f8" />
         <SvgText
           x={size / 2}
           y={size / 2 - 4}
-          fontSize={14}
+          fontSize={12}
           fontWeight="600"
           fill="#6b7280"
           textAnchor="middle">
-          Monthly
+          {label}
         </SvgText>
         <SvgText
           x={size / 2}
           y={size / 2 + 16}
-          fontSize={18}
+          fontSize={16}
           fontWeight="800"
           fill="#0f172a"
           textAnchor="middle">
@@ -104,40 +104,47 @@ const DonutChart = ({ data, total }: { data: Slice[]; total: number }) => {
   );
 };
 
-const SpendComparisonChart = ({ active, wishlist }: { active: number; wishlist: number }) => {
-  const rows = [
-    { label: 'Active', value: active, color: '#111827' },
-    { label: 'Wishlist', value: wishlist, color: '#475569' },
-  ];
-  const barWidth = 240;
-  const maxValue = Math.max(active, wishlist, 1);
+const getMonthsInYear = (startDate: string | Date, targetYear: number): number => {
+  const start = typeof startDate === 'string' ? new Date(startDate) : startDate;
+  const startYear = start.getFullYear();
+  const startMonth = start.getMonth();
 
-  return (
-    <Svg width={barWidth + 120} height={rows.length * 36}>
-      {rows.map((row, index) => {
-        const width = (row.value / maxValue) * barWidth;
-        const y = index * 36 + 10;
-        return (
-          <G key={row.label}>
-            <SvgText x={0} y={y + 14} fontSize={12} fontWeight="700" fill="#0f172a">
-              {row.label}
-            </SvgText>
-            <Rect x={70} y={y} width={barWidth} height={18} rx={9} fill="#e5e7eb" />
-            <Rect x={70} y={y} width={width} height={18} rx={9} fill={row.color} />
-            <SvgText x={70 + barWidth + 10} y={y + 14} fontSize={12} fontWeight="600" fill="#0f172a">
-              {formatCurrency(row.value)}
-            </SvgText>
-          </G>
-        );
-      })}
-    </Svg>
-  );
+  if (startYear > targetYear) return 0;
+  if (startYear < targetYear) return 12;
+
+  return 12 - startMonth;
+};
+
+const isSubscriptionActiveInMonth = (startDate: string | Date, targetYear: number, targetMonth: number): boolean => {
+  const start = typeof startDate === 'string' ? new Date(startDate) : startDate;
+  const startYear = start.getFullYear();
+  const startMonth = start.getMonth();
+
+  if (startYear > targetYear) return false;
+  if (startYear < targetYear) return true;
+  if (startYear === targetYear && startMonth <= targetMonth) return true;
+
+  return false;
+};
+
+const isSubscriptionActiveInYear = (startDate: string | Date, targetYear: number): boolean => {
+  const start = typeof startDate === 'string' ? new Date(startDate) : startDate;
+  const startYear = start.getFullYear();
+  return startYear <= targetYear;
 };
 
 export default function DashboardScreen() {
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [includeWishlist, setIncludeWishlist] = useState(false);
+  const [activeTab, setActiveTab] = useState<SpendTab>('overall');
+
+  const currentYear = new Date().getFullYear();
+  const currentMonth = new Date().getMonth();
+
+  const [selectedYear, setSelectedYear] = useState(currentYear);
+  const [selectedMonth, setSelectedMonth] = useState(currentMonth);
 
   const loadSubscriptions = useCallback(async () => {
     setLoading(true);
@@ -146,6 +153,16 @@ export default function DashboardScreen() {
       setSubscriptions(data);
     } finally {
       setLoading(false);
+    }
+  }, []);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      const data = await getAllSubscriptions();
+      setSubscriptions(data);
+    } finally {
+      setRefreshing(false);
     }
   }, []);
 
@@ -160,111 +177,212 @@ export default function DashboardScreen() {
       ? subscriptions
       : subscriptions.filter((sub) => sub.status === 'active');
 
-    const recurring = base.filter((sub) => sub.billingType !== 'lifetime');
+    if (activeTab === 'overall') {
+      const categoryTotals: Record<string, number> = {};
+      let totalSpend = 0;
 
-    const categoryTotals: Record<string, number> = {};
-    recurring.forEach((sub) => {
-      const amount = normalizeMonthlyAmount(sub);
-      const key = sub.category || 'Other';
-      categoryTotals[key] = (categoryTotals[key] ?? 0) + amount;
+      base.forEach((sub) => {
+        if (sub.billingType === 'lifetime') return;
+
+        let spend = 0;
+
+        if (sub.billingType === 'monthly') {
+          const months = getMonthsInYear(sub.startDate, selectedYear);
+          spend = sub.amount * months;
+        } else if (sub.billingType === 'yearly') {
+          const startYear = typeof sub.startDate === 'string' ? new Date(sub.startDate).getFullYear() : sub.startDate.getFullYear();
+          if (startYear === selectedYear) {
+            spend = sub.amount;
+          }
+        }
+
+        if (spend > 0) {
+          const key = sub.category || 'Other';
+          categoryTotals[key] = (categoryTotals[key] ?? 0) + spend;
+          totalSpend += spend;
+        }
+      });
+
+      const slices: Slice[] = Object.entries(categoryTotals)
+        .filter(([, value]) => value > 0)
+        .map(([category, value]) => ({
+          category,
+          value,
+          color: categoryMeta[category as CategoryKey]?.color ?? categoryMeta.Other.color,
+        }));
+
+      return { slices, total: totalSpend };
+    }
+
+    if (activeTab === 'monthly') {
+      const categoryTotals: Record<string, number> = {};
+      let totalSpend = 0;
+
+      base.forEach((sub) => {
+        if (sub.billingType !== 'monthly') return;
+
+        if (isSubscriptionActiveInMonth(sub.startDate, selectedYear, selectedMonth)) {
+          const key = sub.category || 'Other';
+          categoryTotals[key] = (categoryTotals[key] ?? 0) + sub.amount;
+          totalSpend += sub.amount;
+        }
+      });
+
+      const slices: Slice[] = Object.entries(categoryTotals)
+        .filter(([, value]) => value > 0)
+        .map(([category, value]) => ({
+          category,
+          value,
+          color: categoryMeta[category as CategoryKey]?.color ?? categoryMeta.Other.color,
+        }));
+
+      return { slices, total: totalSpend };
+    }
+
+    if (activeTab === 'yearly') {
+      const categoryTotals: Record<string, number> = {};
+      let totalSpend = 0;
+
+      base.forEach((sub) => {
+        if (sub.billingType !== 'yearly') return;
+
+        if (isSubscriptionActiveInYear(sub.startDate, selectedYear)) {
+          const key = sub.category || 'Other';
+          categoryTotals[key] = (categoryTotals[key] ?? 0) + sub.amount;
+          totalSpend += sub.amount;
+        }
+      });
+
+      const slices: Slice[] = Object.entries(categoryTotals)
+        .filter(([, value]) => value > 0)
+        .map(([category, value]) => ({
+          category,
+          value,
+          color: categoryMeta[category as CategoryKey]?.color ?? categoryMeta.Other.color,
+        }));
+
+      return { slices, total: totalSpend };
+    }
+
+    return { slices: [], total: 0 };
+  }, [includeWishlist, subscriptions, activeTab, selectedYear, selectedMonth]);
+
+  const availableYears = useMemo(() => {
+    const years = new Set<number>();
+    subscriptions.forEach((sub) => {
+      const startYear = typeof sub.startDate === 'string' ? new Date(sub.startDate).getFullYear() : sub.startDate.getFullYear();
+      for (let y = startYear; y <= currentYear; y++) {
+        years.add(y);
+      }
     });
+    return Array.from(years).sort((a, b) => b - a);
+  }, [subscriptions, currentYear]);
 
-    const slices: Slice[] = Object.entries(categoryTotals)
-      .filter(([, value]) => value > 0)
-      .map(([category, value]) => ({
-        category,
-        value,
-        color: categoryMeta[category as CategoryKey]?.color ?? categoryMeta.Other.color,
-      }));
+  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-    const activeSpend = recurring
-      .filter((sub) => sub.status === 'active')
-      .reduce((sum, sub) => sum + normalizeMonthlyAmount(sub), 0);
-
-    const wishlistSpend = recurring
-      .filter((sub) => sub.status === 'wishlist')
-      .reduce((sum, sub) => sum + normalizeMonthlyAmount(sub), 0);
-
-    const lifetimeCount = base.filter((sub) => sub.billingType === 'lifetime').length;
-
-    const totalRecurring = recurring.reduce((sum, sub) => sum + normalizeMonthlyAmount(sub), 0);
-
-    return {
-      slices,
-      activeSpend,
-      wishlistSpend,
-      lifetimeCount,
-      totalRecurring,
-    };
-  }, [includeWishlist, subscriptions]);
+  const getTabLabel = () => {
+    if (activeTab === 'overall') return `Overall Spend (${selectedYear})`;
+    if (activeTab === 'monthly') return `Monthly Spend (${monthNames[selectedMonth]} ${selectedYear})`;
+    if (activeTab === 'yearly') return `Yearly Spend (${selectedYear})`;
+    return '';
+  };
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.container}>
-        <View style={styles.headerRow}>
-          <View>
-            <Text style={styles.title}>Dashboard</Text>
-            <Text style={styles.subtitle}>Normalized monthly view of your subscriptions</Text>
-          </View>
-          <View style={styles.toggleCard}>
-            <Text style={styles.toggleLabel}>Include Wishlist in Analytics</Text>
-            <Switch value={includeWishlist} onValueChange={setIncludeWishlist} />
-          </View>
+      <ScrollView
+        contentContainerStyle={styles.container}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      >
+        <Text style={styles.title}>Dashboard</Text>
+
+        <View style={styles.tabRow}>
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'overall' && styles.tabActive]}
+            onPress={() => setActiveTab('overall')}
+          >
+            <Text style={[styles.tabText, activeTab === 'overall' && styles.tabTextActive]}>
+              Overall
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'monthly' && styles.tabActive]}
+            onPress={() => setActiveTab('monthly')}
+          >
+            <Text style={[styles.tabText, activeTab === 'monthly' && styles.tabTextActive]}>
+              Monthly
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'yearly' && styles.tabActive]}
+            onPress={() => setActiveTab('yearly')}
+          >
+            <Text style={[styles.tabText, activeTab === 'yearly' && styles.tabTextActive]}>
+              Yearly
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.wishlistRow}>
+          <Text style={styles.wishlistLabel}>Include Wishlist in Analytics</Text>
+          <Switch value={includeWishlist} onValueChange={setIncludeWishlist} />
         </View>
 
         {loading ? (
           <ActivityIndicator size="small" color="#111827" style={{ marginTop: 40 }} />
         ) : (
           <>
-            <View style={styles.statRow}>
-              <View style={styles.statCard}>
-                <Text style={styles.statLabel}>Monthly recurring</Text>
-                <Text style={styles.statValue}>{formatCurrency(analytics.totalRecurring)}</Text>
-                <Text style={styles.statNote}>Lifetime is excluded from spend</Text>
-              </View>
-              <View style={styles.statCard}>
-                <Text style={styles.statLabel}>Lifetime subscriptions</Text>
-                <Text style={styles.statValue}>{analytics.lifetimeCount}</Text>
-                <Text style={styles.statNote}>Count respects the wishlist toggle</Text>
-              </View>
+            <View style={styles.headerRow}>
+              <Text style={styles.sectionTitle}>{getTabLabel()}</Text>
+              {activeTab === 'overall' || activeTab === 'yearly' ? (
+                <View style={styles.pickerRow}>
+                  {availableYears.map((year) => (
+                    <TouchableOpacity
+                      key={year}
+                      onPress={() => setSelectedYear(year)}
+                      style={[styles.pickerItem, selectedYear === year && styles.pickerItemActive]}
+                    >
+                      <Text style={[styles.pickerText, selectedYear === year && styles.pickerTextActive]}>
+                        {year}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              ) : null}
+              {activeTab === 'monthly' ? (
+                <View style={styles.pickerRow}>
+                  {monthNames.map((name, idx) => (
+                    <TouchableOpacity
+                      key={idx}
+                      onPress={() => setSelectedMonth(idx)}
+                      style={[styles.pickerItem, selectedMonth === idx && styles.pickerItemActive]}
+                    >
+                      <Text style={[styles.pickerText, selectedMonth === idx && styles.pickerTextActive]}>
+                        {name}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              ) : null}
             </View>
 
-            <View style={styles.card}>
-              <View style={styles.cardHeader}>
-                <Text style={styles.cardTitle}>Category monthly spend</Text>
-                <Text style={styles.cardSubTitle}>Monthly and yearly normalized, lifetime excluded</Text>
-              </View>
-              <View style={styles.chartRow}>
-                <DonutChart data={analytics.slices} total={analytics.totalRecurring} />
+            <Text style={styles.totalAmount}>{formatCurrency(analytics.total)}</Text>
+
+            {analytics.slices.length > 0 ? (
+              <View style={styles.chartSection}>
+                <DonutChart data={analytics.slices} total={analytics.total} label="Spend" />
                 <View style={styles.legend}>
                   {analytics.slices.map((slice) => (
                     <View key={slice.category} style={styles.legendRow}>
                       <View style={[styles.legendSwatch, { backgroundColor: slice.color }]} />
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.legendLabel}>{slice.category}</Text>
-                        <Text style={styles.legendValue}>{formatCurrency(slice.value)}</Text>
-                      </View>
+                      <Text style={styles.legendLabel}>{slice.category}</Text>
+                      <Text style={styles.legendValue}>{formatCurrency(slice.value)}</Text>
                     </View>
                   ))}
-                  {!analytics.slices.length ? (
-                    <Text style={styles.chartEmptyText}>No categories to display</Text>
-                  ) : null}
                 </View>
               </View>
-            </View>
-
-            <View style={styles.card}>
-              <View style={styles.cardHeader}>
-                <Text style={styles.cardTitle}>Active vs wishlist spend</Text>
-                <Text style={styles.cardSubTitle}>Recurring only, monthly normalized</Text>
-              </View>
-              <View style={styles.comparisonWrapper}>
-                <SpendComparisonChart
-                  active={analytics.activeSpend}
-                  wishlist={includeWishlist ? analytics.wishlistSpend : 0}
-                />
-              </View>
-            </View>
+            ) : (
+              <Text style={styles.emptyText}>No data for selected period</Text>
+            )}
           </>
         )}
       </ScrollView>
@@ -278,131 +396,135 @@ const styles = StyleSheet.create({
     backgroundColor: '#f8f8f8',
   },
   container: {
-    padding: 16,
-    gap: 16,
+    padding: 20,
+    paddingBottom: 40,
   },
-  headerRow: {
+  title: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: '#0f172a',
+    marginBottom: 24,
+  },
+  tabRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 20,
+  },
+  tab: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    backgroundColor: '#e5e7eb',
+    alignItems: 'center',
+  },
+  tabActive: {
+    backgroundColor: '#0f172a',
+  },
+  tabText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#6b7280',
+  },
+  tabTextActive: {
+    color: '#fff',
+  },
+  wishlistRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    gap: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    backgroundColor: '#fff',
+    marginBottom: 20,
   },
-  title: {
-    fontSize: 24,
-    fontWeight: '800',
+  wishlistLabel: {
+    fontSize: 14,
+    fontWeight: '600',
     color: '#0f172a',
   },
-  subtitle: {
-    fontSize: 13,
-    color: '#475569',
-    marginTop: 4,
+  headerRow: {
+    marginBottom: 12,
   },
-  toggleCard: {
-    padding: 10,
-    borderRadius: 12,
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-    alignItems: 'flex-end',
-    gap: 6,
-  },
-  toggleLabel: {
-    fontSize: 12,
-    color: '#0f172a',
-    fontWeight: '700',
-  },
-  statRow: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  statCard: {
-    flex: 1,
-    padding: 12,
-    borderRadius: 12,
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-    gap: 6,
-  },
-  statLabel: {
-    fontSize: 13,
-    color: '#6b7280',
-    fontWeight: '700',
-  },
-  statValue: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: '#0f172a',
-  },
-  statNote: {
-    fontSize: 12,
-    color: '#64748b',
-  },
-  card: {
-    backgroundColor: '#fff',
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-    padding: 14,
-    gap: 10,
-  },
-  cardHeader: {
-    gap: 4,
-  },
-  cardTitle: {
+  sectionTitle: {
     fontSize: 18,
+    fontWeight: '700',
+    color: '#0f172a',
+    marginBottom: 12,
+  },
+  pickerRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  pickerItem: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    backgroundColor: '#e5e7eb',
+  },
+  pickerItemActive: {
+    backgroundColor: '#0f172a',
+  },
+  pickerText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#6b7280',
+  },
+  pickerTextActive: {
+    color: '#fff',
+  },
+  totalAmount: {
+    fontSize: 36,
     fontWeight: '800',
     color: '#0f172a',
+    marginBottom: 24,
   },
-  cardSubTitle: {
-    fontSize: 12,
-    color: '#475569',
-  },
-  chartRow: {
-    flexDirection: 'row',
-    gap: 12,
-    alignItems: 'center',
+  chartSection: {
+    gap: 20,
   },
   donutWrapper: {
-    paddingVertical: 8,
-  },
-  legend: {
-    flex: 1,
-    gap: 8,
-  },
-  legendRow: {
-    flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    paddingVertical: 4,
-  },
-  legendSwatch: {
-    width: 14,
-    height: 14,
-    borderRadius: 4,
-  },
-  legendLabel: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#0f172a',
-  },
-  legendValue: {
-    fontSize: 12,
-    color: '#475569',
-    marginTop: 2,
+    paddingVertical: 12,
   },
   chartEmpty: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 24,
+    paddingVertical: 40,
   },
   chartEmptyText: {
     color: '#6b7280',
-    fontSize: 13,
-    textAlign: 'center',
+    fontSize: 14,
   },
-  comparisonWrapper: {
+  legend: {
+    gap: 12,
+  },
+  legendRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 6,
+    gap: 10,
+  },
+  legendSwatch: {
+    width: 16,
+    height: 16,
+    borderRadius: 4,
+  },
+  legendLabel: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#0f172a',
+  },
+  legendValue: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#0f172a',
+  },
+  emptyText: {
+    fontSize: 15,
+    color: '#6b7280',
+    textAlign: 'center',
+    marginTop: 40,
   },
 });
