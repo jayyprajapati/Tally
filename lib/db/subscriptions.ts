@@ -100,6 +100,15 @@ export async function getAllSubscriptions(): Promise<Subscription[]> {
   return rows.map(toSubscription);
 }
 
+export async function getSubscriptionById(id: string | number): Promise<Subscription | null> {
+  if (!initialized) {
+    await initializeDatabase();
+  }
+  const db = await getDatabase();
+  const row = await db.getFirstAsync<any>('SELECT * FROM subscriptions WHERE id = ?;', [id.toString()]);
+  return row ? toSubscription(row) : null;
+}
+
 export async function updateSubscription(subscription: Subscription): Promise<void> {
   const record = toStored(subscription);
   if (!initialized) {

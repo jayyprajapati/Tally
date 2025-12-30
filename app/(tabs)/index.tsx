@@ -389,6 +389,9 @@ export default function DashboardScreen() {
           <ActivityIndicator size="small" color="#111827" style={{ marginTop: 40 }} />
         ) : (
           <>
+            {!subscriptions.length ? (
+              <Text style={styles.emptyText}>Add a subscription to see your spend.</Text>
+            ) : null}
             <View style={styles.headerRow}>
               <Text style={styles.sectionTitle}>{getTabLabel()}</Text>
               {activeTab === 'overall' || activeTab === 'yearly' ? (
