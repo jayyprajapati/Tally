@@ -1,3 +1,4 @@
+import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { useRouter } from 'expo-router';
 import React, { useMemo, useState } from 'react';
 import {
@@ -28,9 +29,10 @@ export default function AddSubscriptionScreen() {
   const [billingType, setBillingType] = useState<Subscription['billingType']>('monthly');
   const [amount, setAmount] = useState('');
   const [status, setStatus] = useState<Subscription['status']>('active');
-  const [startDate] = useState<string | Date>(todayIso);
+  const [startDate, setStartDate] = useState<Date>(new Date());
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [showPicker, setShowPicker] = useState(false);
 
   const onSubmit = async () => {
     if (!name.trim()) {
@@ -54,7 +56,7 @@ export default function AddSubscriptionScreen() {
       category,
       billingType,
       amount: finalAmount,
-      startDate,
+      startDate: startDate.toISOString(),
       status,
       notes: notes.trim() ? notes.trim() : undefined,
     };
@@ -149,7 +151,26 @@ export default function AddSubscriptionScreen() {
 
           <View style={styles.fieldGroup}>
             <Text style={styles.label}>Start date</Text>
-            <Text style={styles.staticValue}>{todayIso.slice(0, 10)}</Text>
+            <Pressable style={styles.staticValue} onPress={() => setShowPicker(true)}>
+              <Text style={styles.dateText}>{startDate.toISOString().slice(0, 10)}</Text>
+            </Pressable>
+            {showPicker && (
+              <DateTimePicker
+                value={startDate}
+                mode="date"
+                display={Platform.OS === 'ios' ? 'spinner' : 'calendar'}
+                onChange={(event: DateTimePickerEvent, date?: Date) => {
+                  if (event.type === 'dismissed') {
+                    setShowPicker(false);
+                    return;
+                  }
+                  if (date) {
+                    setStartDate(date);
+                  }
+                  setShowPicker(false);
+                }}
+              />
+            )}
           </View>
 
           <View style={styles.fieldGroup}>
@@ -258,6 +279,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#e5e7eb',
     backgroundColor: '#fff',
+    fontSize: 16,
+    color: '#111827',
+  },
+  dateText: {
     fontSize: 16,
     color: '#111827',
   },

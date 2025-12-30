@@ -1,3 +1,4 @@
+import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { FlatList, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
@@ -6,7 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import {
     Subscription,
     deleteSubscription,
-    getAllSubscriptions
+    getAllSubscriptions,
 } from '@/lib/db/subscriptions';
 
 const buildSampleSubscription = (): Subscription => ({
@@ -35,9 +36,10 @@ export default function SubscriptionsScreen() {
       Finance: { color: '#0EA5E9', icon: '💳' },
       Education: { color: '#8B5CF6', icon: '📚' },
       Other: { color: '#9CA3AF', icon: '🗂️' },
-    }),
+    } as const),
     [],
   );
+  type CategoryKey = keyof typeof categoryMeta;
 
   const loadSubscriptions = useCallback(async () => {
     setLoading(true);
@@ -52,6 +54,12 @@ export default function SubscriptionsScreen() {
   useEffect(() => {
     loadSubscriptions();
   }, [loadSubscriptions]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadSubscriptions();
+    }, [loadSubscriptions]),
+  );
 
   const handleAdd = () => {
     router.push('/add-subscription');
@@ -69,7 +77,7 @@ export default function SubscriptionsScreen() {
   const closeEdit = () => setEditing(null);
 
   const renderItem = ({ item }: { item: Subscription }) => {
-    const meta = categoryMeta[item.category] ?? categoryMeta.Other;
+    const meta = categoryMeta[(item.category as CategoryKey) ?? 'Other'] ?? categoryMeta.Other;
     const isLifetime = item.billingType === 'lifetime';
     const statusColor = item.status === 'active' ? '#DCFCE7' : '#E0F2FE';
     const statusTextColor = item.status === 'active' ? '#166534' : '#0F172A';
@@ -123,6 +131,7 @@ export default function SubscriptionsScreen() {
         onRefresh={loadSubscriptions}
         ListEmptyComponent={!loading ? <Text style={styles.message}>No subscriptions yet.</Text> : null}
         ListFooterComponent={<View style={{ height: 140 }} />}
+        showsVerticalScrollIndicator={false}
       />
 
       <View style={styles.fabWrapper}>
