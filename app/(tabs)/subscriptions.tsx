@@ -7,9 +7,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import CredentialReveal from '@/components/credential-reveal';
 import { Credential, getAllCredentials, maskCredentialValue } from '@/lib/db/credentials';
 import {
-    Subscription,
-    deleteSubscription,
-    getAllSubscriptions,
+  Subscription,
+  deleteSubscription,
+  getAllSubscriptions,
 } from '@/lib/db/subscriptions';
 
 const formatCurrency = (value: number) =>
@@ -43,7 +43,7 @@ export default function SubscriptionsScreen() {
     setLoading(true);
     try {
       const result = await getAllSubscriptions();
-      setItems(result);
+      setItems(result.filter((sub) => sub.status === 'active'));
     } finally {
       setLoading(false);
     }
