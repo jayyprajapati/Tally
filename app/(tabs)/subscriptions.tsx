@@ -1,12 +1,12 @@
+import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { FlatList, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
     Subscription,
-    addSubscription,
     deleteSubscription,
-    getAllSubscriptions,
+    getAllSubscriptions
 } from '@/lib/db/subscriptions';
 
 const buildSampleSubscription = (): Subscription => ({
@@ -24,6 +24,7 @@ export default function SubscriptionsScreen() {
   const [items, setItems] = useState<Subscription[]>([]);
   const [loading, setLoading] = useState(false);
   const [editing, setEditing] = useState<Subscription | null>(null);
+  const router = useRouter();
 
   const categoryMeta = useMemo(
     () => ({
@@ -52,9 +53,8 @@ export default function SubscriptionsScreen() {
     loadSubscriptions();
   }, [loadSubscriptions]);
 
-  const handleAdd = async () => {
-    await addSubscription(buildSampleSubscription());
-    await loadSubscriptions();
+  const handleAdd = () => {
+    router.push('/add-subscription');
   };
 
   const handleDelete = async (id: string | number) => {
