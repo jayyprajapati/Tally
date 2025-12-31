@@ -10,6 +10,7 @@ import {
     Pressable,
     ScrollView,
     StyleSheet,
+    Switch,
     Text,
     TextInput,
     View,
@@ -18,10 +19,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Credential, getAllCredentials, maskCredentialValue } from '@/lib/db/credentials';
 import { Subscription, getSubscriptionById, updateSubscription } from '@/lib/db/subscriptions';
+import { ReminderDaysBefore, cancelSubscriptionReminder, scheduleSubscriptionReminder } from '@/lib/reminders';
 
 const categories = ['General', 'Entertainment', 'Productivity', 'Fitness', 'Finance', 'Education', 'Other'];
 const billingTypes: Subscription['billingType'][] = ['monthly', 'yearly', 'lifetime'];
 const statuses: Subscription['status'][] = ['active', 'wishlist'];
+const reminderOptions: ReminderDaysBefore[] = [1, 3, 7];
 
 export default function EditSubscriptionScreen() {
   const router = useRouter();
@@ -41,6 +44,9 @@ export default function EditSubscriptionScreen() {
   const [credentials, setCredentials] = useState<Credential[]>([]);
   const [linkedCredentialId, setLinkedCredentialId] = useState<string | undefined>(undefined);
   const [pickerVisible, setPickerVisible] = useState(false);
+  const [reminderEnabled, setReminderEnabled] = useState(false);
+  const [reminderDaysBefore, setReminderDaysBefore] = useState<ReminderDaysBefore>(3);
+  const [reminderNotificationId, setReminderNotificationId] = useState<string | undefined>(undefined);
 
   const loadCredentials = useCallback(async () => {
     const list = await getAllCredentials();
@@ -73,6 +79,9 @@ export default function EditSubscriptionScreen() {
     setStartDate(new Date(existing.startDate));
     setNotes(existing.notes ?? '');
     setLinkedCredentialId(existing.linkedCredentialId);
+    setReminderEnabled(Boolean(existing.reminderEnabled));
+    setReminderDaysBefore((existing.reminderDaysBefore as ReminderDaysBefore) ?? 3);
+    setReminderNotificationId(existing.reminderNotificationId ?? undefined);
     navigation.setOptions({ title: `Edit ${existing.name}` });
     setHydrating(false);
   }, [id, navigation, router]);
@@ -102,8 +111,7 @@ export default function EditSubscriptionScreen() {
     }
 
     const finalAmount = needsAmount ? numericAmount : 0;
-
-    const payload: Subscription = {
+    const basePayload: Subscription = {
       id,
       name: name.trim(),
       category,
@@ -113,6 +121,39 @@ export default function EditSubscriptionScreen() {
       status,
       linkedCredentialId,
       notes: notes.trim() ? notes.trim() : undefined,
+      reminderEnabled,
+      reminderDaysBefore: reminderEnabled ? reminderDaysBefore : undefined,
+      reminderNotificationId,
+    };
+
+    const shouldScheduleReminder = reminderEnabled && billingType !== 'lifetime' && status === 'active';
+    let nextNotificationId = reminderNotificationId;
+
+    if (reminderNotificationId) {
+      await cancelSubscriptionReminder(reminderNotificationId);
+      nextNotificationId = undefined;
+    }
+
+    if (shouldScheduleReminder) {
+      const scheduledId = await scheduleSubscriptionReminder({
+        ...basePayload,
+        reminderEnabled: true,
+        reminderDaysBefore,
+        reminderNotificationId: undefined,
+      });
+
+      if (!scheduledId) {
+        Alert.alert('Enable notifications', 'Allow notification permissions to receive renewal reminders.');
+      }
+
+      nextNotificationId = scheduledId ?? undefined;
+    }
+
+    const payload: Subscription = {
+      ...basePayload,
+      reminderEnabled: shouldScheduleReminder && !!nextNotificationId,
+      reminderDaysBefore: shouldScheduleReminder && !!nextNotificationId ? reminderDaysBefore : undefined,
+      reminderNotificationId: nextNotificationId,
     };
 
     setSubmitting(true);
@@ -180,6 +221,8 @@ export default function EditSubscriptionScreen() {
                     setBillingType(type);
                     if (type === 'lifetime') {
                       setAmount('');
+                      setReminderEnabled(false);
+                      setReminderNotificationId(undefined);
                     }
                   }}
                   style={[styles.segment, billingType === type && styles.segmentSelected]}>
@@ -254,6 +297,39 @@ export default function EditSubscriptionScreen() {
                 }}
               />
             )}
+          </View>
+
+          <View style={styles.fieldGroup}>
+            <View style={styles.reminderHeader}>
+              <Text style={styles.label}>Renewal reminder</Text>
+              <Switch
+                value={reminderEnabled}
+                onValueChange={(enabled) => {
+                  if (billingType === 'lifetime') {
+                    setReminderEnabled(false);
+                    return;
+                  }
+                  setReminderEnabled(enabled);
+                  if (!enabled) {
+                    setReminderNotificationId(undefined);
+                  }
+                }}
+              />
+            </View>
+            {reminderEnabled ? (
+              <View style={styles.chipRow}>
+                {reminderOptions.map((days) => (
+                  <Pressable
+                    key={days}
+                    onPress={() => setReminderDaysBefore(days)}
+                    style={[styles.chip, reminderDaysBefore === days && styles.chipSelected]}>
+                    <Text style={[styles.chipText, reminderDaysBefore === days && styles.chipTextSelected]}>
+                      {days} day{days === 1 ? '' : 's'} before
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            ) : null}
           </View>
 
           <View style={styles.fieldGroup}>
@@ -335,6 +411,11 @@ const styles = StyleSheet.create({
   },
   fieldGroup: {
     gap: 8,
+  },
+  reminderHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   label: {
     fontSize: 14,
