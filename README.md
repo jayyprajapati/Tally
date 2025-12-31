@@ -1,50 +1,39 @@
-# Welcome to your Expo app 👋
+# Tally
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Tally helps you keep every recurring charge, reminder, and linked account in one place so you can see how much you really spend on subscriptions.
 
-## Get started
+## What you get out of the box
 
-1. Install dependencies
+- **Unified dashboard** with an overall, monthly, and yearly view of spend broken down by categories such as Entertainment, Productivity, Finance, and more. The donut chart and category drill-downs help highlight where the wallet leak happens.
+- **Subscriptions tab** that shows active and wishlist services as cards where you can edit metadata, delete entries, or link each subscription to a stored credential.
+- **Add / edit workflow** that supports billing type selection (monthly, yearly, lifetime), credential linking, start dates, renewal reminders powered by Expo Notifications, and heuristic suggestions for common services such as Netflix, ChatGPT, or Microsoft 365.
+- **Credential store** that masks sensitive values and keeps your personal, work, or mobile accounts handy for linking with subscriptions.
+- **Realtime reminders** that schedule or cancel notifications whenever a subscription with reminders enabled is created, updated, or deleted.
 
-   ```bash
-   npm install
-   ```
+## Architecture overview
 
-2. Start the app
+- `app/` is the Expo Router entry point. `_layout.tsx` bootstraps the database, applies the theme, and hosts `(tabs)` and the `add-subscription` modal screen.
+- `(tabs)/` contains the dashboard, subscriptions list, settings, and wishlist views with shared patterns for analytics, filtering, and presentation.
+- `components/` holds reusable UI such as the credential reveal control, animated waves, and the collapsible drawer used across tabs.
+- `lib/db/` manages the SQLite-backed persistence layer for subscriptions and credentials, including schema migrations and helper conversions.
+- `lib/reminders.ts` connects with `expo-notifications` so reminders survive across launches.
+- `hooks/` expose color scheme helpers that keep the app in sync with device theming.
+- `constants/theme.ts` centralizes colors, spacing, and typography tokens for consistent styling.
 
-   ```bash
-   npx expo start
-   ```
+## Setup
 
-In the output, you'll find options to open the app in a
+1. Install dependencies with `npm install`.
+2. Run the project with `npx expo start` (or use `npm run android`, `npm run ios`, `npm run web` for platform-specific consoles).
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+## Helpful scripts
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+- `npm run start` – starts the Expo Metro bundler (`npx expo start`).
+- `npm run android` / `npm run ios` / `npm run web` – open the project directly in the platform simulator or browser.
+- `npm run lint` – runs `expo lint` over the workspace.
+- `npm run reset-project` – archives the current `app/` tree to `app-example/` and regenerates a fresh `app/` directory so you can start over without losing this setup.
 
-## Get a fresh project
+## Data insights & persistence
 
-When you're ready, run:
-
-```bash
-npm run reset-project
-```
-
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
-
-## Learn more
-
-To learn more about developing your project with Expo, look at the following resources:
-
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+- Every subscription record lives in `subscriptions.db` via `expo-sqlite`. The schema stores metadata such as category, billing type, amount, linked credential, notes, and reminder configuration.
+- Credentials are managed in the same database and exposed through `CredentialReveal`, so you never copy plaintext secrets into the UI.
+- The analytics pane calculates spend by iterating subscriptions and adjusting contributions based on billing cadence, wishlist toggles, and the year/month selectors.
