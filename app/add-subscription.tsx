@@ -23,6 +23,39 @@ const categories = ['General', 'Entertainment', 'Productivity', 'Fitness', 'Fina
 const billingTypes: Subscription['billingType'][] = ['monthly', 'yearly', 'lifetime'];
 const statuses: Subscription['status'][] = ['active', 'wishlist'];
 
+type SubscriptionSuggestion = {
+  category: Subscription['category'];
+  billingType: Extract<Subscription['billingType'], 'monthly' | 'yearly'>;
+  amount: number;
+};
+
+const subscriptionSuggestions: Record<string, SubscriptionSuggestion> = {
+  netflix: { category: 'Entertainment', billingType: 'monthly', amount: 15.49 },
+  spotify: { category: 'Entertainment', billingType: 'monthly', amount: 10.99 },
+  'amazon prime': { category: 'Entertainment', billingType: 'yearly', amount: 139 },
+  'amazon prime video': { category: 'Entertainment', billingType: 'monthly', amount: 8.99 },
+  'youtube premium': { category: 'Entertainment', billingType: 'monthly', amount: 13.99 },
+  'google one': { category: 'Productivity', billingType: 'monthly', amount: 1.99 },
+  icloud: { category: 'Productivity', billingType: 'monthly', amount: 0.99 },
+  'microsoft 365': { category: 'Productivity', billingType: 'yearly', amount: 99.99 },
+  coursera: { category: 'Education', billingType: 'monthly', amount: 59 },
+  udemy: { category: 'Education', billingType: 'monthly', amount: 29.99 },
+  chatgpt: { category: 'Productivity', billingType: 'monthly', amount: 20 },
+};
+
+const normalizeName = (value: string) => value.trim().toLowerCase();
+
+const findSuggestion = (value: string): SubscriptionSuggestion | null => {
+  const normalized = normalizeName(value);
+  if (normalized.length < 3) return null;
+
+  const entry = Object.entries(subscriptionSuggestions).find(([key]) =>
+    key.startsWith(normalized) || normalized.startsWith(key),
+  );
+
+  return entry ? entry[1] : null;
+};
+
 export default function AddSubscriptionScreen() {
   const router = useRouter();
   const { mode, id } = useLocalSearchParams<{ mode?: string; id?: string }>();
@@ -41,6 +74,9 @@ export default function AddSubscriptionScreen() {
   const [credentials, setCredentials] = useState<Credential[]>([]);
   const [linkedCredentialId, setLinkedCredentialId] = useState<string | undefined>(undefined);
   const [pickerVisible, setPickerVisible] = useState(false);
+  const [categoryLocked, setCategoryLocked] = useState(false);
+  const [billingLocked, setBillingLocked] = useState(false);
+  const [amountLocked, setAmountLocked] = useState(false);
 
   const loadCredentials = useCallback(async () => {
     const list = await getAllCredentials();
@@ -89,6 +125,38 @@ export default function AddSubscriptionScreen() {
     () => credentials.find((cred) => cred.id === linkedCredentialId),
     [credentials, linkedCredentialId],
   );
+
+  const handleNameChange = (value: string) => {
+    setName(value);
+  };
+
+  useEffect(() => {
+    if (isEdit) return;
+
+    const suggestion = findSuggestion(name);
+    if (!suggestion) return;
+
+    if (!categoryLocked) {
+      setCategory(suggestion.category);
+    }
+
+    if (!billingLocked) {
+      setBillingType(suggestion.billingType);
+    }
+
+    const effectiveBillingType = billingLocked ? billingType : suggestion.billingType;
+
+    if (!amountLocked) {
+      if (billingLocked && billingType !== suggestion.billingType) {
+        return;
+      }
+      if (effectiveBillingType === 'lifetime') {
+        setAmount('');
+      } else {
+        setAmount(String(suggestion.amount));
+      }
+    }
+  }, [amountLocked, billingLocked, billingType, categoryLocked, isEdit, name]);
 
   const onSubmit = async () => {
     if (hydrating) return;
@@ -157,7 +225,7 @@ export default function AddSubscriptionScreen() {
             <Text style={styles.label}>Name</Text>
             <TextInput
               value={name}
-              onChangeText={setName}
+              onChangeText={handleNameChange}
               placeholder="e.g. Netflix"
               style={styles.input}
               autoCapitalize="words"
@@ -171,7 +239,10 @@ export default function AddSubscriptionScreen() {
               {categories.map((cat) => (
                 <Pressable
                   key={cat}
-                  onPress={() => setCategory(cat as Subscription['category'])}
+                  onPress={() => {
+                    setCategory(cat as Subscription['category']);
+                    setCategoryLocked(true);
+                  }}
                   style={[styles.chip, category === cat && styles.chipSelected]}>
                   <Text style={[styles.chipText, category === cat && styles.chipTextSelected]}>{cat}</Text>
                 </Pressable>
@@ -186,9 +257,11 @@ export default function AddSubscriptionScreen() {
                 <Pressable
                   key={type}
                   onPress={() => {
+                    setBillingLocked(true);
                     setBillingType(type);
                     if (type === 'lifetime') {
                       setAmount('');
+                      setAmountLocked(true);
                     }
                   }}
                   style={[styles.segment, billingType === type && styles.segmentSelected]}>
@@ -204,7 +277,10 @@ export default function AddSubscriptionScreen() {
             <Text style={styles.label}>Amount {billingType === 'lifetime' ? '(optional)' : ''}</Text>
             <TextInput
               value={amount}
-              onChangeText={setAmount}
+              onChangeText={(text) => {
+                setAmount(text);
+                setAmountLocked(true);
+              }}
               placeholder="9.99"
               keyboardType="decimal-pad"
               style={styles.input}
