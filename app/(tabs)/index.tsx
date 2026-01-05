@@ -1,20 +1,21 @@
 import { useFocusEffect } from '@react-navigation/native';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator,
-  Modal,
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Switch,
-  Text,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Modal,
+    Pressable,
+    RefreshControl,
+    ScrollView,
+    StyleSheet,
+    Switch,
+    Text,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Circle, Path, Text as SvgText } from 'react-native-svg';
 
+import { Credential, getAllCredentials } from '@/lib/db/credentials';
 import { Subscription, getAllSubscriptions } from '@/lib/db/subscriptions';
 
 const categoryMeta = {
@@ -43,6 +44,11 @@ const polarToCartesian = (cx: number, cy: number, r: number, angle: number) => (
   x: cx + r * Math.cos(angle),
   y: cy + r * Math.sin(angle),
 });
+
+const monthsBetween = (from: Date, to: Date) =>
+  (to.getFullYear() - from.getFullYear()) * 12 + (to.getMonth() - from.getMonth());
+
+const INACTIVE_MONTHS = 6;
 
 
 const DonutChart = ({ data, total, label }: { data: Slice[]; total: number; label: string }) => {
@@ -139,6 +145,7 @@ export default function DashboardScreen() {
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [credentials, setCredentials] = useState<Credential[]>([]);
   const [includeWishlist, setIncludeWishlist] = useState(false);
   const [activeTab, setActiveTab] = useState<SpendTab>('overall');
   const [categoryModal, setCategoryModal] = useState<{ category: string; entries: { item: Subscription; contribution: number }[] } | null>(null);
@@ -159,11 +166,18 @@ export default function DashboardScreen() {
     }
   }, []);
 
+  const loadCredentials = useCallback(async () => {
+    const list = await getAllCredentials();
+    setCredentials(list);
+  }, []);
+
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
       const data = await getAllSubscriptions();
       setSubscriptions(data);
+      const creds = await getAllCredentials();
+      setCredentials(creds);
     } finally {
       setRefreshing(false);
     }
@@ -172,7 +186,8 @@ export default function DashboardScreen() {
   useFocusEffect(
     useCallback(() => {
       loadSubscriptions();
-    }, [loadSubscriptions]),
+      loadCredentials();
+    }, [loadCredentials, loadSubscriptions]),
   );
 
   const analytics = useMemo(() => {
@@ -269,6 +284,57 @@ export default function DashboardScreen() {
 
     return { slices: [], total: 0 };
   }, [includeWishlist, subscriptions, activeTab, selectedYear, selectedMonth]);
+
+  const credentialMap = useMemo(() => {
+    const map: Record<string, Credential> = {};
+    credentials.forEach((cred) => {
+      map[cred.id] = cred;
+    });
+    return map;
+  }, [credentials]);
+
+  const insights = useMemo(() => {
+    const now = new Date();
+    const categoryCount: Record<string, number> = {};
+    const billingCount: Record<'monthly' | 'yearly' | 'lifetime', number> = {
+      monthly: 0,
+      yearly: 0,
+      lifetime: 0,
+    };
+    const credentialUsage: Record<string, number> = {};
+    const inactive: Subscription[] = [];
+
+    subscriptions.forEach((sub) => {
+      const categoryKey = sub.category || 'Other';
+      categoryCount[categoryKey] = (categoryCount[categoryKey] ?? 0) + 1;
+      billingCount[sub.billingType] = (billingCount[sub.billingType] ?? 0) + 1;
+
+      if (sub.linkedCredentialId) {
+        credentialUsage[sub.linkedCredentialId] = (credentialUsage[sub.linkedCredentialId] ?? 0) + 1;
+      }
+
+      const lastTouch = typeof sub.startDate === 'string' ? new Date(sub.startDate) : sub.startDate;
+      if (monthsBetween(lastTouch, now) >= INACTIVE_MONTHS) {
+        inactive.push(sub);
+      }
+    });
+
+    const categoryCounts = Object.entries(categoryCount)
+      .map(([label, count]) => ({ label, count }))
+      .sort((a, b) => b.count - a.count);
+
+    const billingCounts = (['monthly', 'yearly', 'lifetime'] as const).map((key) => ({
+      label: key.charAt(0).toUpperCase() + key.slice(1),
+      count: billingCount[key] ?? 0,
+    }));
+
+    const reusedAccounts = Object.entries(credentialUsage)
+      .filter(([, count]) => count > 1)
+      .map(([id, count]) => ({ id, label: credentialMap[id]?.label ?? 'Linked account', count }))
+      .sort((a, b) => b.count - a.count);
+
+    return { categoryCounts, billingCounts, reusedAccounts, inactive, inactivityThreshold: INACTIVE_MONTHS };
+  }, [credentialMap, subscriptions]);
 
   const availableYears = useMemo(() => {
     const years = new Set<number>();
@@ -448,6 +514,68 @@ export default function DashboardScreen() {
             ) : (
               <Text style={styles.emptyText}>No data for selected period</Text>
             )}
+
+            <View style={styles.insightsSection}>
+              <Text style={styles.sectionTitle}>Insights</Text>
+              <Text style={styles.insightSubtitle}>Read-only counts based on current subscriptions.</Text>
+
+              <View style={styles.insightCard}>
+                <Text style={styles.insightTitle}>By category</Text>
+                {insights.categoryCounts.length ? (
+                  insights.categoryCounts.map((entry) => (
+                    <View key={entry.label} style={styles.insightRow}>
+                      <Text style={styles.insightLabel}>{entry.label}</Text>
+                      <Text style={styles.insightValue}>{entry.count}</Text>
+                    </View>
+                  ))
+                ) : (
+                  <Text style={styles.insightEmpty}>No categories tracked yet.</Text>
+                )}
+              </View>
+
+              <View style={styles.insightCard}>
+                <Text style={styles.insightTitle}>By billing type</Text>
+                {insights.billingCounts.map((entry) => (
+                  <View key={entry.label} style={styles.insightRow}>
+                    <Text style={styles.insightLabel}>{entry.label}</Text>
+                    <Text style={styles.insightValue}>{entry.count}</Text>
+                  </View>
+                ))}
+              </View>
+
+              <View style={styles.insightCard}>
+                <Text style={styles.insightTitle}>Credential reuse</Text>
+                {insights.reusedAccounts.length ? (
+                  insights.reusedAccounts.map((entry) => (
+                    <View key={entry.id} style={styles.insightRow}>
+                      <Text style={styles.insightLabel}>{entry.label}</Text>
+                      <Text style={styles.insightValue}>{entry.count} use{entry.count === 1 ? '' : 's'}</Text>
+                    </View>
+                  ))
+                ) : (
+                  <Text style={styles.insightEmpty}>No linked accounts reused by multiple subscriptions.</Text>
+                )}
+                <Text style={styles.insightNote}>Shows accounts linked to more than one subscription.</Text>
+              </View>
+
+              <View style={styles.insightCard}>
+                <Text style={styles.insightTitle}>Inactive entries</Text>
+                <Text style={styles.insightNote}>Not edited in the last {insights.inactivityThreshold} months (using last start date).</Text>
+                {insights.inactive.length ? (
+                  insights.inactive.map((sub) => (
+                    <View key={sub.id} style={styles.insightRow}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.insightLabel}>{sub.name}</Text>
+                        <Text style={styles.insightSubtext}>{sub.billingType} • {sub.status}</Text>
+                      </View>
+                      <Text style={styles.insightValue}>{new Date(sub.startDate).toISOString().slice(0, 10)}</Text>
+                    </View>
+                  ))
+                ) : (
+                  <Text style={styles.insightEmpty}>All subscriptions have recent edits.</Text>
+                )}
+              </View>
+            </View>
           </>
         )}
       </ScrollView>
@@ -548,6 +676,57 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#0f172a',
     marginBottom: 12,
+  },
+  insightsSection: {
+    marginTop: 24,
+    gap: 12,
+  },
+  insightSubtitle: {
+    fontSize: 13,
+    color: '#6b7280',
+    marginBottom: 2,
+  },
+  insightCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    gap: 8,
+  },
+  insightTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#0f172a',
+  },
+  insightRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  insightLabel: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0f172a',
+    flex: 1,
+  },
+  insightSubtext: {
+    fontSize: 12,
+    color: '#6b7280',
+  },
+  insightValue: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#0f172a',
+  },
+  insightEmpty: {
+    color: '#6b7280',
+    fontSize: 13,
+  },
+  insightNote: {
+    color: '#6b7280',
+    fontSize: 12,
   },
   pickerRow: {
     flexDirection: 'row',

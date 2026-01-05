@@ -1,7 +1,8 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import CredentialReveal from '@/components/credential-reveal';
@@ -21,6 +22,13 @@ const statuses: Subscription['status'][] = ['active', 'wishlist'];
 
 export default function SubscriptionsScreen() {
   const [items, setItems] = useState<Subscription[]>([]);
+  const defaultFilters = useMemo(
+    () => ({ categories: [] as string[], billingType: 'all', status: 'active', credential: 'all' as string }),
+    [],
+  );
+  const [filters, setFilters] = useState(defaultFilters);
+  const [filterModalVisible, setFilterModalVisible] = useState(false);
+  const [draftFilters, setDraftFilters] = useState(defaultFilters);
   const [loading, setLoading] = useState(false);
   const [credentials, setCredentials] = useState<Credential[]>([]);
   const router = useRouter();
@@ -43,7 +51,7 @@ export default function SubscriptionsScreen() {
     setLoading(true);
     try {
       const result = await getAllSubscriptions();
-      setItems(result.filter((sub) => sub.status === 'active'));
+      setItems(result);
     } finally {
       setLoading(false);
     }
@@ -73,6 +81,44 @@ export default function SubscriptionsScreen() {
     });
     return map;
   }, [credentials]);
+
+  const filteredItems = useMemo(() => {
+    const categoryFilters = filters.categories ?? [];
+    return items.filter((item) => {
+      const matchesCategory = categoryFilters.length === 0 || categoryFilters.includes(item.category);
+      const matchesBilling = filters.billingType === 'all' || item.billingType === filters.billingType;
+      const matchesStatus = filters.status === 'all' || item.status === filters.status;
+      const matchesCredential =
+        filters.credential === 'all'
+          ? true
+          : filters.credential === 'none'
+            ? !item.linkedCredentialId
+            : item.linkedCredentialId === filters.credential;
+
+      return matchesCategory && matchesBilling && matchesStatus && matchesCredential;
+    });
+  }, [filters, items]);
+
+  const resetFilters = () => {
+    setFilters(defaultFilters);
+    setDraftFilters(defaultFilters);
+  };
+
+  useEffect(() => {
+    setDraftFilters({
+      ...filters,
+      categories: filters.categories ?? [],
+    });
+  }, [filters]);
+
+  const isDefaultFilters = useMemo(
+    () =>
+      (filters.categories ?? []).length === 0 &&
+      filters.billingType === defaultFilters.billingType &&
+      filters.status === defaultFilters.status &&
+      filters.credential === defaultFilters.credential,
+    [defaultFilters, filters],
+  );
 
   const handleOpenEdit = (item: Subscription) => {
     router.push({ pathname: '/add-subscription', params: { id: String(item.id), mode: 'edit' } });
@@ -148,10 +194,27 @@ export default function SubscriptionsScreen() {
     <SafeAreaView style={styles.container}>
       <View style={styles.topActions}>
         <Text style={styles.screenTitle}>Subscriptions</Text>
+        <View style={styles.topActionsRight}>
+          {!isDefaultFilters ? (
+            <Pressable onPress={resetFilters} style={styles.resetInline} hitSlop={8}>
+              <Text style={styles.resetInlineText}>Reset</Text>
+            </Pressable>
+          ) : null}
+          <Pressable
+            style={styles.filterButton}
+            onPress={() => {
+              setDraftFilters(filters);
+              setFilterModalVisible(true);
+            }}
+          >
+            <Ionicons name="filter" size={16} color="#111827" />
+            <Text style={styles.filterButtonText}>Filters</Text>
+          </Pressable>
+        </View>
       </View>
 
       <FlatList
-        data={items}
+        data={filteredItems}
         keyExtractor={(item) => String(item.id)}
         contentContainerStyle={styles.list}
         renderItem={renderItem}
@@ -175,6 +238,145 @@ export default function SubscriptionsScreen() {
           <Text style={styles.fabLabel}>Add subscription</Text>
         </Pressable>
       </View>
+
+      <Modal
+        visible={filterModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setFilterModalVisible(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Filters</Text>
+            <ScrollView contentContainerStyle={styles.modalBody}>
+              <View style={styles.filterGroup}>
+                <Text style={styles.filterLabel}>Category</Text>
+                <View style={styles.chipRowWrap}>
+                  <Pressable
+                    style={[styles.filterChip, draftFilters.categories.length === 0 && styles.filterChipActive]}
+                    onPress={() => setDraftFilters((prev) => ({ ...prev, categories: [] }))}
+                  >
+                    <Text style={[styles.filterChipText, draftFilters.categories.length === 0 && styles.filterChipTextActive]}>All</Text>
+                  </Pressable>
+                  {categories.map((cat) => (
+                    <Pressable
+                      key={cat}
+                      style={[styles.filterChip, draftFilters.categories.includes(cat) && styles.filterChipActive]}
+                      onPress={() =>
+                        setDraftFilters((prev) => ({
+                          ...prev,
+                          categories: prev.categories.includes(cat)
+                            ? prev.categories.filter((c) => c !== cat)
+                            : [...prev.categories, cat],
+                        }))
+                      }
+                    >
+                      <Text style={[styles.filterChipText, draftFilters.categories.includes(cat) && styles.filterChipTextActive]}>{cat}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+
+              <View style={styles.filterGroup}>
+                <Text style={styles.filterLabel}>Billing type</Text>
+                <View style={styles.chipRowWrap}>
+                  <Pressable
+                    style={[styles.filterChip, draftFilters.billingType === 'all' && styles.filterChipActive]}
+                    onPress={() => setDraftFilters((prev) => ({ ...prev, billingType: 'all' }))}
+                  >
+                    <Text style={[styles.filterChipText, draftFilters.billingType === 'all' && styles.filterChipTextActive]}>All</Text>
+                  </Pressable>
+                  {billingTypes.map((type) => (
+                    <Pressable
+                      key={type}
+                      style={[styles.filterChip, draftFilters.billingType === type && styles.filterChipActive]}
+                      onPress={() => setDraftFilters((prev) => ({ ...prev, billingType: type }))}
+                    >
+                      <Text style={[styles.filterChipText, draftFilters.billingType === type && styles.filterChipTextActive]}>{type}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+
+              <View style={styles.filterGroup}>
+                <Text style={styles.filterLabel}>Status</Text>
+                <View style={styles.chipRowWrap}>
+                  <Pressable
+                    style={[styles.filterChip, draftFilters.status === 'all' && styles.filterChipActive]}
+                    onPress={() => setDraftFilters((prev) => ({ ...prev, status: 'all' }))}
+                  >
+                    <Text style={[styles.filterChipText, draftFilters.status === 'all' && styles.filterChipTextActive]}>All</Text>
+                  </Pressable>
+                  {statuses.map((stat) => (
+                    <Pressable
+                      key={stat}
+                      style={[styles.filterChip, draftFilters.status === stat && styles.filterChipActive]}
+                      onPress={() => setDraftFilters((prev) => ({ ...prev, status: stat }))}
+                    >
+                      <Text style={[styles.filterChipText, draftFilters.status === stat && styles.filterChipTextActive]}>
+                        {stat === 'active' ? 'Active' : 'Wishlist'}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+
+              <View style={styles.filterGroup}>
+                <Text style={styles.filterLabel}>Linked account</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalChips}>
+                  <Pressable
+                    style={[styles.filterChip, draftFilters.credential === 'all' && styles.filterChipActive]}
+                    onPress={() => setDraftFilters((prev) => ({ ...prev, credential: 'all' }))}
+                  >
+                    <Text style={[styles.filterChipText, draftFilters.credential === 'all' && styles.filterChipTextActive]}>All</Text>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.filterChip, draftFilters.credential === 'none' && styles.filterChipActive]}
+                    onPress={() => setDraftFilters((prev) => ({ ...prev, credential: 'none' }))}
+                  >
+                    <Text style={[styles.filterChipText, draftFilters.credential === 'none' && styles.filterChipTextActive]}>None</Text>
+                  </Pressable>
+                  {credentials.map((cred) => (
+                    <Pressable
+                      key={cred.id}
+                      style={[styles.filterChip, draftFilters.credential === cred.id && styles.filterChipActive]}
+                      onPress={() => setDraftFilters((prev) => ({ ...prev, credential: cred.id }))}
+                    >
+                      <Text
+                        style={[styles.filterChipText, draftFilters.credential === cred.id && styles.filterChipTextActive]}
+                        numberOfLines={1}
+                      >
+                        {cred.label}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              </View>
+            </ScrollView>
+            <View style={styles.pickerActions}>
+              <Pressable
+                style={[styles.pickerButton, styles.clearButton]}
+                onPress={() => {
+                  setFilters(defaultFilters);
+                  setDraftFilters(defaultFilters);
+                  setFilterModalVisible(false);
+                }}
+              >
+                <Text style={styles.clearText}>Clear Filters</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.pickerButton, styles.closeButton]}
+                onPress={() => {
+                  setFilters(draftFilters);
+                  setFilterModalVisible(false);
+                }}
+              >
+                <Text style={styles.closeText}>Apply Filters</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -191,16 +393,151 @@ const styles = StyleSheet.create({
   },
   topActions: {
     flexDirection: 'row',
-    justifyContent: 'flex-start',
+    justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 4,
     paddingTop: 4,
     paddingBottom: 8,
   },
+  topActionsRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  filterButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  filterButtonText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  resetInline: {
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  resetInlineText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#2563EB',
+  },
   screenTitle: {
     fontSize: 20,
     fontWeight: '800',
     color: '#0F172A',
+  },
+  filterTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  filterGroup: {
+    gap: 6,
+  },
+  filterLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  chipRowWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  horizontalChips: {
+    gap: 8,
+    paddingRight: 4,
+  },
+  filterChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: '#f3f4f6',
+  },
+  filterChipActive: {
+    backgroundColor: '#111827',
+  },
+  filterChipText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  filterChipTextActive: {
+    color: '#fff',
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  modalCard: {
+    width: '100%',
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#0F172A',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  modalBody: {
+    paddingVertical: 6,
+    gap: 12,
+  },
+  applyButton: {
+    marginTop: 12,
+    paddingVertical: 12,
+    borderRadius: 10,
+    backgroundColor: '#111827',
+    alignItems: 'center',
+  },
+  applyButtonText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 15,
+  },
+  pickerActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 10,
+    marginTop: 12,
+  },
+  pickerButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  clearButton: {
+    backgroundColor: '#f3f4f6',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  clearText: {
+    color: '#111827',
+    fontWeight: '700',
+  },
+  closeButton: {
+    backgroundColor: '#111827',
+  },
+  closeText: {
+    color: '#fff',
+    fontWeight: '700',
   },
   emptyState: {
     paddingVertical: 40,
