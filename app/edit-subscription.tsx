@@ -229,6 +229,7 @@ export default function EditSubscriptionScreen() {
               value={name}
               onChangeText={setName}
               placeholder="e.g. Netflix"
+              placeholderTextColor="#6b7280"
               style={styles.input}
               autoCapitalize="words"
               returnKeyType="next"
@@ -278,6 +279,7 @@ export default function EditSubscriptionScreen() {
               value={amount}
               onChangeText={setAmount}
               placeholder="9.99"
+              placeholderTextColor="#6b7280"
               keyboardType="decimal-pad"
               style={styles.input}
               editable={billingType !== 'lifetime'}
@@ -480,6 +482,7 @@ export default function EditSubscriptionScreen() {
               value={notes}
               onChangeText={setNotes}
               placeholder="Any quick notes"
+              placeholderTextColor="#6b7280"
               style={[styles.input, styles.multiline]}
               multiline
             />

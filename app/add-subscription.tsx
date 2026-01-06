@@ -311,6 +311,7 @@ export default function AddSubscriptionScreen() {
               value={name}
               onChangeText={handleNameChange}
               placeholder="e.g. Netflix"
+              placeholderTextColor="#6b7280"
               style={styles.input}
               autoCapitalize="words"
               returnKeyType="next"
@@ -368,6 +369,7 @@ export default function AddSubscriptionScreen() {
                 setAmountLocked(true);
               }}
               placeholder="9.99"
+              placeholderTextColor="#6b7280"
               keyboardType="decimal-pad"
               style={styles.input}
               editable={billingType !== 'lifetime'}
@@ -421,6 +423,7 @@ export default function AddSubscriptionScreen() {
                     <TextInput
                       style={[styles.input, styles.memberInput]}
                       placeholder="Name"
+                      placeholderTextColor="#6b7280"
                       value={member}
                       onChangeText={(text) =>
                         setSharedMembers((prev) => {
@@ -573,6 +576,7 @@ export default function AddSubscriptionScreen() {
               value={notes}
               onChangeText={setNotes}
               placeholder="Any quick notes"
+              placeholderTextColor="#6b7280"
               style={[styles.input, styles.multiline]}
               multiline
             />

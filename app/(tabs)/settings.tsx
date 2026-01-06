@@ -177,6 +177,7 @@ export default function SettingsScreen() {
                   value={inputLabel}
                   onChangeText={setInputLabel}
                   placeholder="e.g. Bank Login"
+                  placeholderTextColor="#6b7280"
                   style={styles.modalInput}
                 />
               </View>
@@ -190,6 +191,7 @@ export default function SettingsScreen() {
                 value={inputValue}
                 onChangeText={setInputValue}
                 placeholder={editing?.type === 'mobileNumber' ? 'e.g. +1 555 123 4567' : 'Enter value'}
+                placeholderTextColor="#6b7280"
                 keyboardType={editing?.type === 'mobileNumber' ? 'phone-pad' : 'default'}
                 autoCapitalize={editing?.type === 'mobileNumber' ? 'none' : 'none'}
                 style={styles.modalInput}

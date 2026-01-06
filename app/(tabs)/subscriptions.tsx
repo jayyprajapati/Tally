@@ -371,6 +371,7 @@ export default function SubscriptionsScreen() {
                   value={oneTimeName}
                   onChangeText={setOneTimeName}
                   placeholder="e.g. Movie ticket"
+                  placeholderTextColor="#6b7280"
                   style={styles.sheetInput}
                 />
               </View>
@@ -380,6 +381,7 @@ export default function SubscriptionsScreen() {
                   value={oneTimePlatform}
                   onChangeText={setOneTimePlatform}
                   placeholder="e.g. Apple TV"
+                  placeholderTextColor="#6b7280"
                   style={styles.sheetInput}
                 />
               </View>
@@ -403,6 +405,7 @@ export default function SubscriptionsScreen() {
                   value={oneTimeAmount}
                   onChangeText={setOneTimeAmount}
                   placeholder="0.00"
+                  placeholderTextColor="#6b7280"
                   keyboardType="decimal-pad"
                   style={styles.sheetInput}
                 />
