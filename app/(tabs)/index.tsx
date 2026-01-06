@@ -119,32 +119,51 @@ const DonutChart = ({ data, total, label }: { data: Slice[]; total: number; labe
   );
 };
 
-const getMonthsInYear = (startDate: string | Date, targetYear: number): number => {
+const getMonthsInYear = (startDate: string | Date, targetYear: number, stopDate?: string | Date | null): number => {
   const start = typeof startDate === 'string' ? new Date(startDate) : startDate;
+  const stop = stopDate ? (typeof stopDate === 'string' ? new Date(stopDate) : stopDate) : null;
   const startYear = start.getFullYear();
   const startMonth = start.getMonth();
 
   if (startYear > targetYear) return 0;
-  if (startYear < targetYear) return 12;
 
-  return 12 - startMonth;
+  const stopYear = stop?.getFullYear();
+  const stopMonth = stop?.getMonth();
+
+  if (stop && stopYear !== undefined && stopYear < targetYear) return 0;
+
+  const endMonth = stop && stopYear === targetYear ? stopMonth ?? 0 : 11;
+  const effectiveStartMonth = startYear === targetYear ? startMonth : 0;
+  const span = endMonth - effectiveStartMonth + 1;
+
+  return Math.max(0, Math.min(span, 12));
 };
 
-const isSubscriptionActiveInMonth = (startDate: string | Date, targetYear: number, targetMonth: number): boolean => {
+const isSubscriptionActiveInMonth = (startDate: string | Date, targetYear: number, targetMonth: number, stopDate?: string | Date | null): boolean => {
   const start = typeof startDate === 'string' ? new Date(startDate) : startDate;
+  const stop = stopDate ? (typeof stopDate === 'string' ? new Date(stopDate) : stopDate) : null;
   const startYear = start.getFullYear();
   const startMonth = start.getMonth();
 
   if (startYear > targetYear) return false;
+  if (stop) {
+    const stopYear = stop.getFullYear();
+    const stopMonth = stop.getMonth();
+    if (targetYear > stopYear) return false;
+    if (targetYear === stopYear && targetMonth > stopMonth) return false;
+  }
   if (startYear < targetYear) return true;
   if (startYear === targetYear && startMonth <= targetMonth) return true;
 
   return false;
 };
 
-const isSubscriptionActiveInYear = (startDate: string | Date, targetYear: number): boolean => {
+const isSubscriptionActiveInYear = (startDate: string | Date, targetYear: number, stopDate?: string | Date | null): boolean => {
   const start = typeof startDate === 'string' ? new Date(startDate) : startDate;
+  const stop = stopDate ? (typeof stopDate === 'string' ? new Date(stopDate) : stopDate) : null;
   const startYear = start.getFullYear();
+  const stopYear = stop?.getFullYear();
+  if (stopYear !== undefined && targetYear > stopYear) return false;
   return startYear <= targetYear;
 };
 
@@ -223,14 +242,19 @@ export default function DashboardScreen() {
       base.forEach((sub) => {
         if (sub.billingType === 'lifetime') return;
 
+        const stop = sub.hasStopDate ? sub.stopDate : null;
+
         let spend = 0;
 
         if (sub.billingType === 'monthly') {
-          const months = getMonthsInYear(sub.startDate, selectedYear);
+          const months = getMonthsInYear(sub.startDate, selectedYear, stop);
           spend = sub.amount * months;
         } else if (sub.billingType === 'yearly') {
           const startYear = typeof sub.startDate === 'string' ? new Date(sub.startDate).getFullYear() : sub.startDate.getFullYear();
-          if (startYear === selectedYear) {
+          const stopYear = stop
+            ? (typeof stop === 'string' ? new Date(stop).getFullYear() : stop.getFullYear())
+            : undefined;
+          if (startYear === selectedYear && (stopYear === undefined || stopYear >= selectedYear)) {
             spend = sub.amount;
           }
         }
@@ -266,7 +290,7 @@ export default function DashboardScreen() {
       base.forEach((sub) => {
         if (sub.billingType !== 'monthly') return;
 
-        if (isSubscriptionActiveInMonth(sub.startDate, selectedYear, selectedMonth)) {
+        if (isSubscriptionActiveInMonth(sub.startDate, selectedYear, selectedMonth, sub.hasStopDate ? sub.stopDate : null)) {
           const key = sub.category || 'Other';
           categoryTotals[key] = (categoryTotals[key] ?? 0) + sub.amount;
           totalSpend += sub.amount;
@@ -291,7 +315,7 @@ export default function DashboardScreen() {
       base.forEach((sub) => {
         if (sub.billingType !== 'yearly') return;
 
-        if (isSubscriptionActiveInYear(sub.startDate, selectedYear)) {
+        if (isSubscriptionActiveInYear(sub.startDate, selectedYear, sub.hasStopDate ? sub.stopDate : null)) {
           const key = sub.category || 'Other';
           categoryTotals[key] = (categoryTotals[key] ?? 0) + sub.amount;
           totalSpend += sub.amount;
@@ -409,15 +433,20 @@ export default function DashboardScreen() {
         if (sub.category !== category) return;
         if (sub.billingType === 'lifetime') return;
 
+        const stop = sub.hasStopDate ? sub.stopDate : null;
+
         if (activeTab === 'overall') {
           if (sub.billingType === 'monthly') {
-            const months = getMonthsInYear(sub.startDate, selectedYear);
+            const months = getMonthsInYear(sub.startDate, selectedYear, stop);
             if (months > 0) {
               entries.push({ type: 'subscription', item: sub, contribution: sub.amount * months });
             }
           } else if (sub.billingType === 'yearly') {
             const startYear = typeof sub.startDate === 'string' ? new Date(sub.startDate).getFullYear() : sub.startDate.getFullYear();
-            if (startYear === selectedYear) {
+            const stopYear = stop
+              ? (typeof stop === 'string' ? new Date(stop).getFullYear() : stop.getFullYear())
+              : undefined;
+            if (startYear === selectedYear && (stopYear === undefined || stopYear >= selectedYear)) {
               entries.push({ type: 'subscription', item: sub, contribution: sub.amount });
             }
           }
@@ -425,14 +454,14 @@ export default function DashboardScreen() {
 
         if (activeTab === 'monthly') {
           if (sub.billingType !== 'monthly') return;
-          if (isSubscriptionActiveInMonth(sub.startDate, selectedYear, selectedMonth)) {
+          if (isSubscriptionActiveInMonth(sub.startDate, selectedYear, selectedMonth, stop)) {
             entries.push({ type: 'subscription', item: sub, contribution: sub.amount });
           }
         }
 
         if (activeTab === 'yearly') {
           if (sub.billingType !== 'yearly') return;
-          if (isSubscriptionActiveInYear(sub.startDate, selectedYear)) {
+          if (isSubscriptionActiveInYear(sub.startDate, selectedYear, stop)) {
             entries.push({ type: 'subscription', item: sub, contribution: sub.amount });
           }
         }

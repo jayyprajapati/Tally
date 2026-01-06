@@ -77,10 +77,13 @@ export default function AddSubscriptionScreen() {
   const [accessType, setAccessType] = useState<Subscription['accessType']>('owned');
   const [sharedMembers, setSharedMembers] = useState<string[]>([]);
   const [startDate, setStartDate] = useState<Date>(new Date());
+  const [hasStopDate, setHasStopDate] = useState(false);
+  const [stopDate, setStopDate] = useState<Date | null>(null);
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [hydrating, setHydrating] = useState<boolean>(isEdit);
   const [showPicker, setShowPicker] = useState(false);
+  const [showStopPicker, setShowStopPicker] = useState(false);
   const [credentials, setCredentials] = useState<Credential[]>([]);
   const [linkedCredentialId, setLinkedCredentialId] = useState<string | undefined>(undefined);
   const [pickerVisible, setPickerVisible] = useState(false);
@@ -126,6 +129,8 @@ export default function AddSubscriptionScreen() {
       setAccessType(existing.accessType ?? 'owned');
       setSharedMembers((existing.sharedMembers ?? []).slice(0, 10));
       setStartDate(new Date(existing.startDate));
+      setHasStopDate(Boolean(existing.hasStopDate));
+      setStopDate(existing.stopDate ? new Date(existing.stopDate) : null);
       setNotes(existing.notes ?? '');
       setLinkedCredentialId(existing.linkedCredentialId);
       setReminderEnabled(Boolean(existing.reminderEnabled));
@@ -176,6 +181,15 @@ export default function AddSubscriptionScreen() {
     }
   }, [amountLocked, billingLocked, billingType, categoryLocked, isEdit, name]);
 
+  useEffect(() => {
+    if (!hasStopDate || !stopDate) return;
+    if (stopDate <= startDate) {
+      const nextDay = new Date(startDate);
+      nextDay.setDate(nextDay.getDate() + 1);
+      setStopDate(nextDay);
+    }
+  }, [hasStopDate, startDate, stopDate]);
+
   const onSubmit = async () => {
     if (hydrating) return;
     if (!name.trim()) {
@@ -199,6 +213,16 @@ export default function AddSubscriptionScreen() {
       .slice(0, 10);
     const effectiveSharedMembers = accessType === 'shared' ? cleanedMembers : [];
 
+    if (hasStopDate && !stopDate) {
+      Alert.alert('Stop date required', 'Select a planned stop date or turn off the toggle.');
+      return;
+    }
+
+    if (hasStopDate && stopDate && stopDate <= startDate) {
+      Alert.alert('Invalid stop date', 'Stop date must be after the start date.');
+      return;
+    }
+
     const basePayload: Subscription = {
       id: isEdit && id ? id : Date.now().toString(),
       name: name.trim(),
@@ -209,6 +233,8 @@ export default function AddSubscriptionScreen() {
       status,
       accessType,
       sharedMembers: effectiveSharedMembers,
+      hasStopDate,
+      stopDate: hasStopDate && stopDate ? stopDate.toISOString() : null,
       linkedCredentialId,
       notes: notes.trim() ? notes.trim() : undefined,
       reminderEnabled,
@@ -460,6 +486,52 @@ export default function AddSubscriptionScreen() {
                 }}
               />
             )}
+          </View>
+
+          <View style={styles.fieldGroup}>
+            <View style={styles.reminderHeader}>
+              <Text style={styles.label}>Planned to stop</Text>
+              <Switch
+                value={hasStopDate}
+                onValueChange={(next) => {
+                  setHasStopDate(next);
+                  if (!next) {
+                    setStopDate(null);
+                    setShowStopPicker(false);
+                  } else if (!stopDate) {
+                    const tomorrow = new Date(startDate);
+                    tomorrow.setDate(tomorrow.getDate() + 1);
+                    setStopDate(tomorrow);
+                  }
+                }}
+              />
+            </View>
+            {hasStopDate ? (
+              <>
+                <Pressable style={styles.staticValue} onPress={() => setShowStopPicker(true)}>
+                  <Text style={styles.dateText}>
+                    {stopDate ? stopDate.toISOString().slice(0, 10) : 'Select stop date'}
+                  </Text>
+                </Pressable>
+                {showStopPicker && (
+                  <DateTimePicker
+                    value={stopDate ?? new Date(startDate.getTime() + 24 * 60 * 60 * 1000)}
+                    mode="date"
+                    display={Platform.OS === 'ios' ? 'spinner' : 'calendar'}
+                    onChange={(event: DateTimePickerEvent, date?: Date) => {
+                      if (event.type === 'dismissed') {
+                        setShowStopPicker(false);
+                        return;
+                      }
+                      if (date) {
+                        setStopDate(date);
+                      }
+                      setShowStopPicker(false);
+                    }}
+                  />
+                )}
+              </>
+            ) : null}
           </View>
 
           <View style={styles.fieldGroup}>
