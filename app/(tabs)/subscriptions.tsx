@@ -666,9 +666,9 @@ const styles = StyleSheet.create({
     color: '#2563EB',
   },
   screenTitle: {
-    fontSize: 20,
+    fontSize: 24,
     fontWeight: '800',
-    color: '#0F172A',
+    color: '#0f172a',
   },
   filterTitle: {
     fontSize: 16,
