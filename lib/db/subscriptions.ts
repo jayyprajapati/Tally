@@ -3,6 +3,7 @@ import { openDatabaseAsync, type SQLiteDatabase } from 'expo-sqlite';
 
 export type BillingType = 'monthly' | 'yearly' | 'lifetime';
 export type SubscriptionStatus = 'active' | 'wishlist';
+export type SubscriptionAccessType = 'owned' | 'shared';
 
 export interface Subscription {
   id: string | number;
@@ -12,6 +13,8 @@ export interface Subscription {
   amount: number;
   startDate: string | Date;
   status: SubscriptionStatus;
+  accessType: SubscriptionAccessType;
+  sharedMembers: string[];
   linkedCredentialId?: string;
   notes?: string;
   reminderEnabled?: boolean;
@@ -43,6 +46,8 @@ export async function initializeDatabase(): Promise<void> {
       amount REAL NOT NULL,
       startDate TEXT NOT NULL,
       status TEXT NOT NULL,
+      accessType TEXT NOT NULL DEFAULT 'owned',
+      sharedMembers TEXT,
       linkedCredentialId TEXT,
       notes TEXT,
       reminderEnabled INTEGER NOT NULL DEFAULT 0,
@@ -80,6 +85,8 @@ const ensureNewColumns = async (db: SQLiteDatabase) => {
   await addIfMissing('reminderEnabled', 'ALTER TABLE subscriptions ADD COLUMN reminderEnabled INTEGER NOT NULL DEFAULT 0;');
   await addIfMissing('reminderDaysBefore', 'ALTER TABLE subscriptions ADD COLUMN reminderDaysBefore INTEGER;');
   await addIfMissing('reminderNotificationId', 'ALTER TABLE subscriptions ADD COLUMN reminderNotificationId TEXT;');
+  await addIfMissing('accessType', "ALTER TABLE subscriptions ADD COLUMN accessType TEXT NOT NULL DEFAULT 'owned';");
+  await addIfMissing('sharedMembers', 'ALTER TABLE subscriptions ADD COLUMN sharedMembers TEXT;');
 };
 
 const toStored = (subscription: Subscription) => {
@@ -92,6 +99,8 @@ const toStored = (subscription: Subscription) => {
     ...subscription,
     id: `${subscription.id}`,
     startDate,
+    accessType: subscription.accessType ?? 'owned',
+    sharedMembers: JSON.stringify(subscription.sharedMembers ?? []),
     reminderEnabled: subscription.reminderEnabled ? 1 : 0,
     reminderDaysBefore: subscription.reminderDaysBefore ?? null,
     reminderNotificationId: subscription.reminderNotificationId ?? null,
@@ -106,6 +115,16 @@ const toSubscription = (row: any): Subscription => ({
   amount: Number(row.amount),
   startDate: row.startDate,
   status: row.status as SubscriptionStatus,
+  accessType: (row.accessType as SubscriptionAccessType) ?? 'owned',
+  sharedMembers: (() => {
+    if (!row.sharedMembers) return [];
+    try {
+      const parsed = JSON.parse(row.sharedMembers);
+      return Array.isArray(parsed) ? parsed.filter((v) => typeof v === 'string') : [];
+    } catch (error) {
+      return [];
+    }
+  })(),
   linkedCredentialId: row.linkedCredentialId ?? undefined,
   notes: row.notes ?? undefined,
   reminderEnabled: Boolean(row.reminderEnabled),
@@ -125,8 +144,8 @@ export async function addSubscription(subscription: Subscription): Promise<void>
 
   await db.runAsync(
     `INSERT OR REPLACE INTO subscriptions (
-      id, name, category, billingType, amount, startDate, status, linkedCredentialId, notes, reminderEnabled, reminderDaysBefore, reminderNotificationId
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+      id, name, category, billingType, amount, startDate, status, accessType, sharedMembers, linkedCredentialId, notes, reminderEnabled, reminderDaysBefore, reminderNotificationId
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
     [
       record.id,
       record.name,
@@ -135,6 +154,8 @@ export async function addSubscription(subscription: Subscription): Promise<void>
       record.amount,
       record.startDate,
       record.status,
+      record.accessType,
+      record.sharedMembers,
       record.linkedCredentialId ?? null,
       record.notes ?? null,
       record.reminderEnabled ?? 0,
@@ -171,7 +192,7 @@ export async function updateSubscription(subscription: Subscription): Promise<vo
 
   await db.runAsync(
     `UPDATE subscriptions
-      SET name = ?, category = ?, billingType = ?, amount = ?, startDate = ?, status = ?, linkedCredentialId = ?, notes = ?, reminderEnabled = ?, reminderDaysBefore = ?, reminderNotificationId = ?
+      SET name = ?, category = ?, billingType = ?, amount = ?, startDate = ?, status = ?, accessType = ?, sharedMembers = ?, linkedCredentialId = ?, notes = ?, reminderEnabled = ?, reminderDaysBefore = ?, reminderNotificationId = ?
       WHERE id = ?;`,
     [
       record.name,
@@ -180,6 +201,8 @@ export async function updateSubscription(subscription: Subscription): Promise<vo
       record.amount,
       record.startDate,
       record.status,
+      record.accessType,
+      record.sharedMembers,
       record.linkedCredentialId ?? null,
       record.notes ?? null,
       record.reminderEnabled ?? 0,

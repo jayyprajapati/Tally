@@ -18,7 +18,12 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Credential, getAllCredentials, maskCredentialValue } from '@/lib/db/credentials';
-import { Subscription, addSubscription, getSubscriptionById, updateSubscription } from '@/lib/db/subscriptions';
+import {
+    Subscription,
+    addSubscription,
+    getSubscriptionById,
+    updateSubscription,
+} from '@/lib/db/subscriptions';
 import { ReminderDaysBefore, cancelSubscriptionReminder, scheduleSubscriptionReminder } from '@/lib/reminders';
 
 const categories = ['General', 'Entertainment', 'Productivity', 'Fitness', 'Finance', 'Education', 'Other'];
@@ -69,6 +74,8 @@ export default function AddSubscriptionScreen() {
   const [billingType, setBillingType] = useState<Subscription['billingType']>('monthly');
   const [amount, setAmount] = useState('');
   const [status, setStatus] = useState<Subscription['status']>('active');
+  const [accessType, setAccessType] = useState<Subscription['accessType']>('owned');
+  const [sharedMembers, setSharedMembers] = useState<string[]>([]);
   const [startDate, setStartDate] = useState<Date>(new Date());
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -116,6 +123,8 @@ export default function AddSubscriptionScreen() {
       setBillingType(existing.billingType);
       setAmount(existing.billingType === 'lifetime' ? '' : String(existing.amount));
       setStatus(existing.status);
+      setAccessType(existing.accessType ?? 'owned');
+      setSharedMembers((existing.sharedMembers ?? []).slice(0, 10));
       setStartDate(new Date(existing.startDate));
       setNotes(existing.notes ?? '');
       setLinkedCredentialId(existing.linkedCredentialId);
@@ -184,6 +193,12 @@ export default function AddSubscriptionScreen() {
 
     const resolvedAmount = Number.isNaN(numericAmount) ? 0 : numericAmount;
     const finalAmount = needsAmount ? resolvedAmount : 0;
+    const cleanedMembers = sharedMembers
+      .map((member) => member.trim())
+      .filter(Boolean)
+      .slice(0, 10);
+    const effectiveSharedMembers = accessType === 'shared' ? cleanedMembers : [];
+
     const basePayload: Subscription = {
       id: isEdit && id ? id : Date.now().toString(),
       name: name.trim(),
@@ -192,6 +207,8 @@ export default function AddSubscriptionScreen() {
       amount: finalAmount,
       startDate: startDate.toISOString(),
       status,
+      accessType,
+      sharedMembers: effectiveSharedMembers,
       linkedCredentialId,
       notes: notes.trim() ? notes.trim() : undefined,
       reminderEnabled,
@@ -346,6 +363,67 @@ export default function AddSubscriptionScreen() {
               ))}
             </View>
           </View>
+
+          <View style={styles.fieldGroup}>
+            <Text style={styles.label}>Access Type</Text>
+            <View style={styles.segmentRow}>
+              {(['owned', 'shared'] as Subscription['accessType'][]).map((type) => (
+                <Pressable
+                  key={type}
+                  onPress={() => {
+                    setAccessType(type);
+                    if (type === 'owned') {
+                      setSharedMembers([]);
+                    }
+                  }}
+                  style={[styles.segment, accessType === type && styles.segmentSelected]}
+                >
+                  <Text style={[styles.segmentText, accessType === type && styles.segmentTextSelected]}>
+                    {type === 'owned' ? 'Owned' : 'Shared'}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+
+          {accessType === 'shared' ? (
+            <View style={styles.fieldGroup}>
+              <Text style={styles.label}>Who is sharing this with you?</Text>
+              <View style={styles.memberList}>
+                {sharedMembers.map((member, index) => (
+                  <View style={styles.memberRow} key={`${index}-${member}`}>
+                    <TextInput
+                      style={[styles.input, styles.memberInput]}
+                      placeholder="Name"
+                      value={member}
+                      onChangeText={(text) =>
+                        setSharedMembers((prev) => {
+                          const next = [...prev];
+                          next[index] = text;
+                          return next;
+                        })
+                      }
+                    />
+                    <Pressable
+                      style={styles.memberRemove}
+                      onPress={() => setSharedMembers((prev) => prev.filter((_, i) => i !== index))}
+                      hitSlop={8}
+                    >
+                      <Text style={styles.memberRemoveText}>Remove</Text>
+                    </Pressable>
+                  </View>
+                ))}
+                {sharedMembers.length < 10 ? (
+                  <Pressable
+                    style={[styles.addMemberButton, sharedMembers.length >= 10 && styles.submitDisabled]}
+                    onPress={() => setSharedMembers((prev) => [...prev, ''])}
+                  >
+                    <Text style={styles.addMemberText}>Add member</Text>
+                  </Pressable>
+                ) : null}
+              </View>
+            </View>
+          ) : null}
 
           <View style={styles.fieldGroup}>
             <Text style={styles.label}>Linked Account</Text>
@@ -686,5 +764,36 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     color: '#6b7280',
     marginVertical: 16,
+  },
+  memberList: {
+    gap: 8,
+  },
+  memberRow: {
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center',
+  },
+  memberInput: {
+    flex: 1,
+  },
+  memberRemove: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: '#f3f4f6',
+    borderRadius: 10,
+  },
+  memberRemoveText: {
+    color: '#b91c1c',
+    fontWeight: '700',
+  },
+  addMemberButton: {
+    paddingVertical: 12,
+    borderRadius: 10,
+    backgroundColor: '#111827',
+    alignItems: 'center',
+  },
+  addMemberText: {
+    color: '#fff',
+    fontWeight: '700',
   },
 });

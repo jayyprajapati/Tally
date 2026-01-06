@@ -23,7 +23,13 @@ const statuses: Subscription['status'][] = ['active', 'wishlist'];
 export default function SubscriptionsScreen() {
   const [items, setItems] = useState<Subscription[]>([]);
   const defaultFilters = useMemo(
-    () => ({ categories: [] as string[], billingType: 'all', status: 'active', credential: 'all' as string }),
+    () => ({
+      categories: [] as string[],
+      billingType: 'all',
+      status: 'active',
+      credential: 'all' as string,
+      accessType: 'all' as 'all' | Subscription['accessType'],
+    }),
     [],
   );
   const [filters, setFilters] = useState(defaultFilters);
@@ -94,8 +100,9 @@ export default function SubscriptionsScreen() {
           : filters.credential === 'none'
             ? !item.linkedCredentialId
             : item.linkedCredentialId === filters.credential;
+      const matchesAccessType = filters.accessType === 'all' || item.accessType === filters.accessType;
 
-      return matchesCategory && matchesBilling && matchesStatus && matchesCredential;
+      return matchesCategory && matchesBilling && matchesStatus && matchesCredential && matchesAccessType;
     });
   }, [filters, items]);
 
@@ -116,7 +123,8 @@ export default function SubscriptionsScreen() {
       (filters.categories ?? []).length === 0 &&
       filters.billingType === defaultFilters.billingType &&
       filters.status === defaultFilters.status &&
-      filters.credential === defaultFilters.credential,
+      filters.credential === defaultFilters.credential &&
+      filters.accessType === defaultFilters.accessType,
     [defaultFilters, filters],
   );
 
@@ -159,6 +167,11 @@ export default function SubscriptionsScreen() {
                   {item.status === 'active' ? 'Active' : 'Wishlist'}
                 </Text>
               </View>
+              {item.accessType === 'shared' ? (
+                <View style={styles.sharedBadge}> 
+                  <Text style={styles.sharedText}>Shared</Text>
+                </View>
+              ) : null}
               <View style={[styles.billingBadge, isLifetime && styles.lifetimeBadge]}> 
                 <Text style={[styles.billingText, isLifetime && styles.lifetimeText]}>
                   {item.billingType}
@@ -318,6 +331,30 @@ export default function SubscriptionsScreen() {
                       </Text>
                     </Pressable>
                   ))}
+                </View>
+              </View>
+
+              <View style={styles.filterGroup}>
+                <Text style={styles.filterLabel}>Access Type</Text>
+                <View style={styles.chipRowWrap}>
+                  <Pressable
+                    style={[styles.filterChip, draftFilters.accessType === 'all' && styles.filterChipActive]}
+                    onPress={() => setDraftFilters((prev) => ({ ...prev, accessType: 'all' }))}
+                  >
+                    <Text style={[styles.filterChipText, draftFilters.accessType === 'all' && styles.filterChipTextActive]}>All</Text>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.filterChip, draftFilters.accessType === 'owned' && styles.filterChipActive]}
+                    onPress={() => setDraftFilters((prev) => ({ ...prev, accessType: 'owned' }))}
+                  >
+                    <Text style={[styles.filterChipText, draftFilters.accessType === 'owned' && styles.filterChipTextActive]}>Owned</Text>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.filterChip, draftFilters.accessType === 'shared' && styles.filterChipActive]}
+                    onPress={() => setDraftFilters((prev) => ({ ...prev, accessType: 'shared' }))}
+                  >
+                    <Text style={[styles.filterChipText, draftFilters.accessType === 'shared' && styles.filterChipTextActive]}>Shared</Text>
+                  </Pressable>
                 </View>
               </View>
 
@@ -619,6 +656,17 @@ const styles = StyleSheet.create({
   statusText: {
     fontSize: 12,
     fontWeight: '700',
+  },
+  sharedBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: '#E0E7FF',
+  },
+  sharedText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#312E81',
   },
   billingBadge: {
     paddingHorizontal: 10,

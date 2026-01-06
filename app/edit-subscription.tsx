@@ -3,17 +3,17 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-    Alert,
-    KeyboardAvoidingView,
-    Modal,
-    Platform,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Switch,
-    Text,
-    TextInput,
-    View,
+  Alert,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  TextInput,
+  View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -36,6 +36,8 @@ export default function EditSubscriptionScreen() {
   const [billingType, setBillingType] = useState<Subscription['billingType']>('monthly');
   const [amount, setAmount] = useState('');
   const [status, setStatus] = useState<Subscription['status']>('active');
+  const [accessType, setAccessType] = useState<Subscription['accessType']>('owned');
+  const [sharedMembers, setSharedMembers] = useState<string[]>([]);
   const [startDate, setStartDate] = useState<Date>(new Date());
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -76,6 +78,8 @@ export default function EditSubscriptionScreen() {
     setBillingType(existing.billingType);
     setAmount(existing.billingType === 'lifetime' ? '' : String(existing.amount));
     setStatus(existing.status);
+    setAccessType(existing.accessType ?? 'owned');
+    setSharedMembers((existing.sharedMembers ?? []).slice(0, 10));
     setStartDate(new Date(existing.startDate));
     setNotes(existing.notes ?? '');
     setLinkedCredentialId(existing.linkedCredentialId);
@@ -111,6 +115,11 @@ export default function EditSubscriptionScreen() {
     }
 
     const finalAmount = needsAmount ? numericAmount : 0;
+    const cleanedMembers = sharedMembers
+      .map((member) => member.trim())
+      .filter(Boolean)
+      .slice(0, 10);
+    const effectiveSharedMembers = accessType === 'shared' ? cleanedMembers : [];
     const basePayload: Subscription = {
       id,
       name: name.trim(),
@@ -119,6 +128,8 @@ export default function EditSubscriptionScreen() {
       amount: finalAmount,
       startDate: startDate.toISOString(),
       status,
+      accessType,
+      sharedMembers: effectiveSharedMembers,
       linkedCredentialId,
       notes: notes.trim() ? notes.trim() : undefined,
       reminderEnabled,
@@ -261,6 +272,64 @@ export default function EditSubscriptionScreen() {
               ))}
             </View>
           </View>
+
+          <View style={styles.fieldGroup}>
+            <Text style={styles.label}>Access Type</Text>
+            <View style={styles.segmentRow}>
+              {(['owned', 'shared'] as Subscription['accessType'][]).map((type) => (
+                <Pressable
+                  key={type}
+                  onPress={() => {
+                    setAccessType(type);
+                    if (type === 'owned') {
+                      setSharedMembers([]);
+                    }
+                  }}
+                  style={[styles.segment, accessType === type && styles.segmentSelected]}>
+                  <Text style={[styles.segmentText, accessType === type && styles.segmentTextSelected]}>
+                    {type === 'owned' ? 'Owned' : 'Shared'}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+
+          {accessType === 'shared' ? (
+            <View style={styles.fieldGroup}>
+              <Text style={styles.label}>Who is sharing this with you?</Text>
+              <View style={styles.memberList}>
+                {sharedMembers.map((member, index) => (
+                  <View style={styles.memberRow} key={`${index}-${member}`}>
+                    <TextInput
+                      style={[styles.input, styles.memberInput]}
+                      placeholder="Name"
+                      value={member}
+                      onChangeText={(text) =>
+                        setSharedMembers((prev) => {
+                          const next = [...prev];
+                          next[index] = text;
+                          return next;
+                        })
+                      }
+                    />
+                    <Pressable
+                      style={styles.memberRemove}
+                      onPress={() => setSharedMembers((prev) => prev.filter((_, i) => i !== index))}
+                      hitSlop={8}>
+                      <Text style={styles.memberRemoveText}>Remove</Text>
+                    </Pressable>
+                  </View>
+                ))}
+                {sharedMembers.length < 10 ? (
+                  <Pressable
+                    style={[styles.addMemberButton, sharedMembers.length >= 10 && styles.submitDisabled]}
+                    onPress={() => setSharedMembers((prev) => [...prev, ''])}>
+                    <Text style={styles.addMemberText}>Add member</Text>
+                  </Pressable>
+                ) : null}
+              </View>
+            </View>
+          ) : null}
 
           <View style={styles.fieldGroup}>
             <Text style={styles.label}>Linked Account</Text>
@@ -601,5 +670,36 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     color: '#6b7280',
     marginVertical: 16,
+  },
+  memberList: {
+    gap: 8,
+  },
+  memberRow: {
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center',
+  },
+  memberInput: {
+    flex: 1,
+  },
+  memberRemove: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: '#f3f4f6',
+    borderRadius: 10,
+  },
+  memberRemoveText: {
+    color: '#b91c1c',
+    fontWeight: '700',
+  },
+  addMemberButton: {
+    paddingVertical: 12,
+    borderRadius: 10,
+    backgroundColor: '#111827',
+    alignItems: 'center',
+  },
+  addMemberText: {
+    color: '#fff',
+    fontWeight: '700',
   },
 });
