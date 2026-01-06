@@ -16,6 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Circle, Path, Text as SvgText } from 'react-native-svg';
 
 import { Credential, getAllCredentials } from '@/lib/db/credentials';
+import { OneTimeItem, getAllOneTimeItems } from '@/lib/db/onetime-items';
 import { Subscription, getAllSubscriptions } from '@/lib/db/subscriptions';
 
 const categoryMeta = {
@@ -38,7 +39,13 @@ type Slice = {
 
 type SpendTab = 'overall' | 'monthly' | 'yearly';
 
+type CategoryEntry =
+  | { type: 'subscription'; item: Subscription; contribution: number }
+  | { type: 'oneTime'; item: OneTimeItem; contribution: number };
+
 const formatCurrency = (value: number) => `₹${value.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+const formatDate = (value: string | Date) =>
+  (value instanceof Date ? value.toISOString() : new Date(value).toISOString()).slice(0, 10);
 
 const polarToCartesian = (cx: number, cy: number, r: number, angle: number) => ({
   x: cx + r * Math.cos(angle),
@@ -143,12 +150,13 @@ const isSubscriptionActiveInYear = (startDate: string | Date, targetYear: number
 
 export default function DashboardScreen() {
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
+  const [oneTimeItems, setOneTimeItems] = useState<OneTimeItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [credentials, setCredentials] = useState<Credential[]>([]);
   const [includeWishlist, setIncludeWishlist] = useState(false);
   const [activeTab, setActiveTab] = useState<SpendTab>('overall');
-  const [categoryModal, setCategoryModal] = useState<{ category: string; entries: { item: Subscription; contribution: number }[] } | null>(null);
+  const [categoryModal, setCategoryModal] = useState<{ category: string; entries: CategoryEntry[] } | null>(null);
 
   const currentYear = new Date().getFullYear();
   const currentMonth = new Date().getMonth();
@@ -166,6 +174,11 @@ export default function DashboardScreen() {
     }
   }, []);
 
+  const loadOneTimeItems = useCallback(async () => {
+    const list = await getAllOneTimeItems();
+    setOneTimeItems(list);
+  }, []);
+
   const loadCredentials = useCallback(async () => {
     const list = await getAllCredentials();
     setCredentials(list);
@@ -178,6 +191,8 @@ export default function DashboardScreen() {
       setSubscriptions(data);
       const creds = await getAllCredentials();
       setCredentials(creds);
+      const ones = await getAllOneTimeItems();
+      setOneTimeItems(ones);
     } finally {
       setRefreshing(false);
     }
@@ -187,13 +202,19 @@ export default function DashboardScreen() {
     useCallback(() => {
       loadSubscriptions();
       loadCredentials();
-    }, [loadCredentials, loadSubscriptions]),
+      loadOneTimeItems();
+    }, [loadCredentials, loadOneTimeItems, loadSubscriptions]),
   );
 
   const analytics = useMemo(() => {
     const base = includeWishlist
       ? subscriptions
       : subscriptions.filter((sub) => sub.status === 'active');
+
+    const oneTimeByYear = oneTimeItems.filter((item) => {
+      const year = new Date(item.date).getFullYear();
+      return year === selectedYear;
+    });
 
     if (activeTab === 'overall') {
       const categoryTotals: Record<string, number> = {};
@@ -219,6 +240,12 @@ export default function DashboardScreen() {
           categoryTotals[key] = (categoryTotals[key] ?? 0) + spend;
           totalSpend += spend;
         }
+      });
+
+      oneTimeByYear.forEach((item) => {
+        const key = item.category || 'Other';
+        categoryTotals[key] = (categoryTotals[key] ?? 0) + item.amount;
+        totalSpend += item.amount;
       });
 
       const slices: Slice[] = Object.entries(categoryTotals)
@@ -283,7 +310,7 @@ export default function DashboardScreen() {
     }
 
     return { slices: [], total: 0 };
-  }, [includeWishlist, subscriptions, activeTab, selectedYear, selectedMonth]);
+  }, [activeTab, includeWishlist, oneTimeItems, selectedMonth, selectedYear, subscriptions]);
 
   const credentialMap = useMemo(() => {
     const map: Record<string, Credential> = {};
@@ -346,9 +373,14 @@ export default function DashboardScreen() {
         years.add(y);
       }
     });
+    oneTimeItems.forEach((item) => {
+      const year = new Date(item.date).getFullYear();
+      maxYear = Math.max(maxYear, year);
+      years.add(year);
+    });
     if (!years.size) years.add(currentYear);
     return Array.from(years).sort((a, b) => b - a);
-  }, [subscriptions, currentYear]);
+  }, [subscriptions, oneTimeItems, currentYear]);
 
   useEffect(() => {
     if (!availableYears.includes(selectedYear)) {
@@ -371,7 +403,7 @@ export default function DashboardScreen() {
         ? subscriptions
         : subscriptions.filter((sub) => sub.status === 'active');
 
-      const entries: { item: Subscription; contribution: number }[] = [];
+      const entries: CategoryEntry[] = [];
 
       base.forEach((sub) => {
         if (sub.category !== category) return;
@@ -381,12 +413,12 @@ export default function DashboardScreen() {
           if (sub.billingType === 'monthly') {
             const months = getMonthsInYear(sub.startDate, selectedYear);
             if (months > 0) {
-              entries.push({ item: sub, contribution: sub.amount * months });
+              entries.push({ type: 'subscription', item: sub, contribution: sub.amount * months });
             }
           } else if (sub.billingType === 'yearly') {
             const startYear = typeof sub.startDate === 'string' ? new Date(sub.startDate).getFullYear() : sub.startDate.getFullYear();
             if (startYear === selectedYear) {
-              entries.push({ item: sub, contribution: sub.amount });
+              entries.push({ type: 'subscription', item: sub, contribution: sub.amount });
             }
           }
         }
@@ -394,21 +426,31 @@ export default function DashboardScreen() {
         if (activeTab === 'monthly') {
           if (sub.billingType !== 'monthly') return;
           if (isSubscriptionActiveInMonth(sub.startDate, selectedYear, selectedMonth)) {
-            entries.push({ item: sub, contribution: sub.amount });
+            entries.push({ type: 'subscription', item: sub, contribution: sub.amount });
           }
         }
 
         if (activeTab === 'yearly') {
           if (sub.billingType !== 'yearly') return;
           if (isSubscriptionActiveInYear(sub.startDate, selectedYear)) {
-            entries.push({ item: sub, contribution: sub.amount });
+            entries.push({ type: 'subscription', item: sub, contribution: sub.amount });
           }
         }
       });
 
+      if (activeTab === 'overall') {
+        oneTimeItems.forEach((item) => {
+          if (item.category !== category) return;
+          const year = new Date(item.date).getFullYear();
+          if (year === selectedYear) {
+            entries.push({ type: 'oneTime', item, contribution: item.amount });
+          }
+        });
+      }
+
       return entries;
     },
-    [activeTab, includeWishlist, selectedMonth, selectedYear, subscriptions],
+    [activeTab, includeWishlist, oneTimeItems, selectedMonth, selectedYear, subscriptions],
   );
 
   return (
@@ -589,19 +631,25 @@ export default function DashboardScreen() {
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>{categoryModal?.category ?? ''}</Text>
-            <Text style={styles.modalSubtitle}>Subscriptions contributing to this category</Text>
+            <Text style={styles.modalSubtitle}>Items contributing to this category</Text>
             <ScrollView style={styles.modalList}>
-              {categoryModal?.entries.map(({ item, contribution }) => (
-                <View key={item.id} style={styles.modalRow}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.modalItemName}>{item.name}</Text>
-                    <Text style={styles.modalItemMeta}>{item.billingType} • {item.status}</Text>
+              {categoryModal?.entries.map(({ item, contribution, type }) => {
+                const isSubscription = type === 'subscription';
+                const subMeta = isSubscription
+                  ? `${(item as Subscription).billingType} • ${(item as Subscription).status}`
+                  : `${(item as OneTimeItem).platform} • ${formatDate((item as OneTimeItem).date)}`;
+                return (
+                  <View key={`${type}-${item.id}`} style={styles.modalRow}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.modalItemName}>{item.name}</Text>
+                      <Text style={styles.modalItemMeta}>{isSubscription ? 'Subscription' : 'One-time'} • {subMeta}</Text>
+                    </View>
+                    <Text style={styles.modalItemValue}>{formatCurrency(contribution)}</Text>
                   </View>
-                  <Text style={styles.modalItemValue}>{formatCurrency(contribution)}</Text>
-                </View>
-              ))}
+                );
+              })}
               {!categoryModal?.entries.length ? (
-                <Text style={styles.modalEmpty}>No subscriptions found for this view.</Text>
+                <Text style={styles.modalEmpty}>No items found for this view.</Text>
               ) : null}
             </ScrollView>
             <Pressable style={styles.modalCloseButton} onPress={() => setCategoryModal(null)}>

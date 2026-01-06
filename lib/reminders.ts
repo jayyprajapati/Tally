@@ -76,6 +76,7 @@ export const scheduleSubscriptionReminder = async (subscription: Subscription): 
   const secondsUntilReminder = Math.max(1, Math.round((reminderDate.getTime() - Date.now()) / 1000));
 
   const trigger: Notifications.TimeIntervalTriggerInput = {
+    type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
     seconds: secondsUntilReminder,
     repeats: false,
     channelId: Platform.OS === 'android' ? 'default' : undefined,

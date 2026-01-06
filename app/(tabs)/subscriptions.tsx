@@ -1,12 +1,14 @@
 import { Ionicons } from '@expo/vector-icons';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import CredentialReveal from '@/components/credential-reveal';
 import { Credential, getAllCredentials, maskCredentialValue } from '@/lib/db/credentials';
+import { OneTimeItem, addOneTimeItem, getAllOneTimeItems } from '@/lib/db/onetime-items';
 import {
   Subscription,
   deleteSubscription,
@@ -15,6 +17,8 @@ import {
 
 const formatCurrency = (value: number) =>
   `₹${value.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+const formatDate = (value: string | Date) =>
+  (value instanceof Date ? value.toISOString() : new Date(value).toISOString()).slice(0, 10);
 
 const categories = ['General', 'Entertainment', 'Productivity', 'Fitness', 'Finance', 'Education', 'Other'];
 const billingTypes: Subscription['billingType'][] = ['monthly', 'yearly', 'lifetime'];
@@ -22,6 +26,7 @@ const statuses: Subscription['status'][] = ['active', 'wishlist'];
 
 export default function SubscriptionsScreen() {
   const [items, setItems] = useState<Subscription[]>([]);
+  const [oneTimeItems, setOneTimeItems] = useState<OneTimeItem[]>([]);
   const defaultFilters = useMemo(
     () => ({
       categories: [] as string[],
@@ -36,6 +41,14 @@ export default function SubscriptionsScreen() {
   const [filterModalVisible, setFilterModalVisible] = useState(false);
   const [draftFilters, setDraftFilters] = useState(defaultFilters);
   const [loading, setLoading] = useState(false);
+  const [oneTimeModalVisible, setOneTimeModalVisible] = useState(false);
+  const [oneTimeSubmitting, setOneTimeSubmitting] = useState(false);
+  const [oneTimeName, setOneTimeName] = useState('');
+  const [oneTimePlatform, setOneTimePlatform] = useState('');
+  const [oneTimeCategory, setOneTimeCategory] = useState<string>('General');
+  const [oneTimeAmount, setOneTimeAmount] = useState('');
+  const [oneTimeDate, setOneTimeDate] = useState<Date>(new Date());
+  const [showOneTimeDatePicker, setShowOneTimeDatePicker] = useState(false);
   const [credentials, setCredentials] = useState<Credential[]>([]);
   const router = useRouter();
 
@@ -63,6 +76,11 @@ export default function SubscriptionsScreen() {
     }
   }, []);
 
+  const loadOneTimeItems = useCallback(async () => {
+    const list = await getAllOneTimeItems();
+    setOneTimeItems(list);
+  }, []);
+
   const loadCredentials = useCallback(async () => {
     const list = await getAllCredentials();
     setCredentials(list);
@@ -71,13 +89,15 @@ export default function SubscriptionsScreen() {
   useEffect(() => {
     loadSubscriptions();
     loadCredentials();
-  }, [loadSubscriptions, loadCredentials]);
+    loadOneTimeItems();
+  }, [loadSubscriptions, loadCredentials, loadOneTimeItems]);
 
   useFocusEffect(
     useCallback(() => {
       loadSubscriptions();
       loadCredentials();
-    }, [loadSubscriptions, loadCredentials]),
+      loadOneTimeItems();
+    }, [loadSubscriptions, loadCredentials, loadOneTimeItems]),
   );
 
   const credentialMap = useMemo(() => {
@@ -134,6 +154,57 @@ export default function SubscriptionsScreen() {
 
   const handleAdd = () => {
     router.push('/add-subscription');
+  };
+
+  const handleOpenOneTime = () => {
+    resetOneTimeForm();
+    setOneTimeModalVisible(true);
+  };
+
+  const resetOneTimeForm = () => {
+    setOneTimeName('');
+    setOneTimePlatform('');
+    setOneTimeCategory('General');
+    setOneTimeAmount('');
+    setOneTimeDate(new Date());
+    setShowOneTimeDatePicker(false);
+  };
+
+  const handleSaveOneTime = async () => {
+    if (oneTimeSubmitting) return;
+    if (!oneTimeName.trim()) {
+      Alert.alert('Name required', 'Please enter a name.');
+      return;
+    }
+    if (!oneTimePlatform.trim()) {
+      Alert.alert('Platform required', 'Please enter the platform.');
+      return;
+    }
+
+    const parsedAmount = parseFloat(oneTimeAmount);
+    if (Number.isNaN(parsedAmount) || parsedAmount <= 0) {
+      Alert.alert('Amount required', 'Enter an amount greater than 0.');
+      return;
+    }
+
+    const payload: OneTimeItem = {
+      id: Date.now().toString(),
+      name: oneTimeName.trim(),
+      platform: oneTimePlatform.trim(),
+      category: oneTimeCategory,
+      amount: parsedAmount,
+      date: oneTimeDate.toISOString(),
+    };
+
+    setOneTimeSubmitting(true);
+    try {
+      await addOneTimeItem(payload);
+      await loadOneTimeItems();
+      resetOneTimeForm();
+      setOneTimeModalVisible(false);
+    } finally {
+      setOneTimeSubmitting(false);
+    }
   };
 
   const handleDelete = async (id: string | number) => {
@@ -241,16 +312,144 @@ export default function SubscriptionsScreen() {
             </View>
           ) : null
         }
-        ListFooterComponent={<View style={{ height: 140 }} />}
+        ListFooterComponent={
+          <View style={styles.oneTimeSectionWrapper}>
+            <Text style={styles.oneTimeTitle}>One-time items</Text>
+            {oneTimeItems.length ? (
+              <View style={styles.oneTimeList}>
+                {oneTimeItems.map((item) => (
+                  <View key={item.id} style={styles.oneTimeCard}>
+                    <View style={styles.oneTimeHeader}>
+                      <View>
+                        <Text style={styles.oneTimeName}>{item.name}</Text>
+                        <Text style={styles.oneTimeMeta}>{item.platform} • {item.category}</Text>
+                      </View>
+                      <Text style={styles.oneTimeAmount}>{formatCurrency(item.amount)}</Text>
+                    </View>
+                    <Text style={styles.oneTimeDate}>{formatDate(item.date)}</Text>
+                  </View>
+                ))}
+              </View>
+            ) : (
+              <Text style={styles.oneTimeEmpty}>No one-time items yet.</Text>
+            )}
+            <View style={{ height: 140 }} />
+          </View>
+        }
         showsVerticalScrollIndicator={false}
       />
 
       <View style={styles.fabWrapper}>
-        <Pressable style={styles.fab} onPress={handleAdd}>
-          <Text style={styles.fabIcon}>＋</Text>
-          <Text style={styles.fabLabel}>Add subscription</Text>
-        </Pressable>
+        <View style={styles.fabRow}>
+          <Pressable style={styles.fabSecondary} onPress={handleOpenOneTime}>
+            <Text style={styles.fabIcon}>＋</Text>
+            <Text style={styles.fabLabel}>Add One-Time</Text>
+          </Pressable>
+          <Pressable style={styles.fab} onPress={handleAdd}>
+            <Text style={styles.fabIcon}>＋</Text>
+            <Text style={styles.fabLabel}>Add subscription</Text>
+          </Pressable>
+        </View>
       </View>
+
+      <Modal
+        visible={oneTimeModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => {
+          resetOneTimeForm();
+          setOneTimeModalVisible(false);
+        }}
+      >
+        <View style={styles.sheetBackdrop}>
+          <View style={styles.sheetCard}>
+            <Text style={styles.sheetTitle}>Add One-Time</Text>
+            <ScrollView contentContainerStyle={styles.sheetBody}>
+              <View style={styles.sheetField}>
+                <Text style={styles.sheetLabel}>Name</Text>
+                <TextInput
+                  value={oneTimeName}
+                  onChangeText={setOneTimeName}
+                  placeholder="e.g. Movie ticket"
+                  style={styles.sheetInput}
+                />
+              </View>
+              <View style={styles.sheetField}>
+                <Text style={styles.sheetLabel}>Platform</Text>
+                <TextInput
+                  value={oneTimePlatform}
+                  onChangeText={setOneTimePlatform}
+                  placeholder="e.g. Apple TV"
+                  style={styles.sheetInput}
+                />
+              </View>
+              <View style={styles.sheetField}>
+                <Text style={styles.sheetLabel}>Category</Text>
+                <View style={styles.chipRowWrap}>
+                  {categories.map((cat) => (
+                    <Pressable
+                      key={cat}
+                      onPress={() => setOneTimeCategory(cat)}
+                      style={[styles.filterChip, oneTimeCategory === cat && styles.filterChipActive]}
+                    >
+                      <Text style={[styles.filterChipText, oneTimeCategory === cat && styles.filterChipTextActive]}>{cat}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+              <View style={styles.sheetField}>
+                <Text style={styles.sheetLabel}>Amount</Text>
+                <TextInput
+                  value={oneTimeAmount}
+                  onChangeText={setOneTimeAmount}
+                  placeholder="0.00"
+                  keyboardType="decimal-pad"
+                  style={styles.sheetInput}
+                />
+              </View>
+              <View style={styles.sheetField}>
+                <Text style={styles.sheetLabel}>Date</Text>
+                <Pressable style={styles.sheetStatic} onPress={() => setShowOneTimeDatePicker(true)}>
+                  <Text style={styles.sheetStaticText}>{formatDate(oneTimeDate)}</Text>
+                </Pressable>
+                {showOneTimeDatePicker ? (
+                  <DateTimePicker
+                    value={oneTimeDate}
+                    mode="date"
+                    display="spinner"
+                    onChange={(event, date) => {
+                      if (event.type === 'dismissed') {
+                        setShowOneTimeDatePicker(false);
+                        return;
+                      }
+                      if (date) setOneTimeDate(date);
+                      setShowOneTimeDatePicker(false);
+                    }}
+                  />
+                ) : null}
+              </View>
+            </ScrollView>
+            <View style={styles.sheetActions}>
+              <Pressable
+                style={[styles.sheetButton, styles.sheetCancel]}
+                onPress={() => {
+                  resetOneTimeForm();
+                  setOneTimeModalVisible(false);
+                }}
+              >
+                <Text style={styles.sheetCancelText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.sheetButton, styles.sheetSave, oneTimeSubmitting && styles.submitDisabled]}
+                onPress={handleSaveOneTime}
+                disabled={oneTimeSubmitting}
+              >
+                <Text style={styles.sheetSaveText}>{oneTimeSubmitting ? 'Saving…' : 'Save'}</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       <Modal
         visible={filterModalVisible}
@@ -510,6 +709,89 @@ const styles = StyleSheet.create({
   filterChipTextActive: {
     color: '#fff',
   },
+  sheetBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    justifyContent: 'flex-end',
+  },
+  sheetCard: {
+    backgroundColor: '#fff',
+    padding: 16,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    maxHeight: '85%',
+  },
+  sheetTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#0F172A',
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+  sheetBody: {
+    gap: 12,
+  },
+  sheetField: {
+    gap: 6,
+  },
+  sheetLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  sheetInput: {
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: '#fff',
+    fontSize: 16,
+  },
+  sheetStatic: {
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: '#fff',
+  },
+  sheetStaticText: {
+    fontSize: 16,
+    color: '#111827',
+  },
+  sheetActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 16,
+  },
+  sheetButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  sheetCancel: {
+    backgroundColor: '#f3f4f6',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  sheetCancelText: {
+    color: '#111827',
+    fontWeight: '700',
+  },
+  sheetSave: {
+    backgroundColor: '#111827',
+  },
+  sheetSaveText: {
+    color: '#fff',
+    fontWeight: '700',
+  },
+  submitDisabled: {
+    opacity: 0.7,
+  },
   modalBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.35)',
@@ -695,6 +977,25 @@ const styles = StyleSheet.create({
     padding: 16,
     alignItems: 'center',
   },
+  fabRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  fabSecondary: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    backgroundColor: '#111',
+    borderRadius: 999,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 4,
+  },
   fab: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -766,5 +1067,55 @@ const styles = StyleSheet.create({
   linkedValue: {
     fontSize: 14,
     color: '#111827',
+  },
+  oneTimeSectionWrapper: {
+    marginTop: 12,
+    gap: 10,
+  },
+  oneTimeTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#0F172A',
+    paddingHorizontal: 4,
+  },
+  oneTimeList: {
+    gap: 10,
+  },
+  oneTimeCard: {
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: 12,
+    padding: 12,
+    backgroundColor: '#fff',
+    gap: 6,
+  },
+  oneTimeHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 10,
+  },
+  oneTimeName: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  oneTimeMeta: {
+    fontSize: 13,
+    color: '#6B7280',
+    marginTop: 2,
+  },
+  oneTimeAmount: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  oneTimeDate: {
+    fontSize: 13,
+    color: '#6B7280',
+  },
+  oneTimeEmpty: {
+    color: '#6B7280',
+    paddingHorizontal: 4,
   },
 });
