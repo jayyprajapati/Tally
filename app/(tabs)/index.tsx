@@ -1,16 +1,16 @@
 import { useFocusEffect } from '@react-navigation/native';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-    ActivityIndicator,
-    Modal,
-    Pressable,
-    RefreshControl,
-    ScrollView,
-    StyleSheet,
-    Switch,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Modal,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Circle, Path, Text as SvgText } from 'react-native-svg';
@@ -67,6 +67,36 @@ const DonutChart = ({ data, total, label }: { data: Slice[]; total: number; labe
     return (
       <View style={styles.chartEmpty}>
         <Text style={styles.chartEmptyText}>No data</Text>
+      </View>
+    );
+  }
+
+  if (data.length === 1) {
+    const slice = data[0];
+    return (
+      <View style={styles.donutWrapper}>
+        <Svg width={size} height={size}>
+          <Circle cx={size / 2} cy={size / 2} r={radius} fill={slice.color} />
+          <Circle cx={size / 2} cy={size / 2} r={innerRadius} fill="#f8f8f8" />
+          <SvgText
+            x={size / 2}
+            y={size / 2 - 4}
+            fontSize={12}
+            fontWeight="600"
+            fill="#6b7280"
+            textAnchor="middle">
+            {label}
+          </SvgText>
+          <SvgText
+            x={size / 2}
+            y={size / 2 + 16}
+            fontSize={16}
+            fontWeight="800"
+            fill="#0f172a"
+            textAnchor="middle">
+            {formatCurrency(total)}
+          </SvgText>
+        </Svg>
       </View>
     );
   }
@@ -176,6 +206,9 @@ export default function DashboardScreen() {
   const [includeWishlist, setIncludeWishlist] = useState(false);
   const [activeTab, setActiveTab] = useState<SpendTab>('overall');
   const [categoryModal, setCategoryModal] = useState<{ category: string; entries: CategoryEntry[] } | null>(null);
+  const [overallYearModalVisible, setOverallYearModalVisible] = useState(false);
+  const [monthlyMonthModalVisible, setMonthlyMonthModalVisible] = useState(false);
+  const [yearlyYearModalVisible, setYearlyYearModalVisible] = useState(false);
 
   const currentYear = new Date().getFullYear();
   const currentMonth = new Date().getMonth();
@@ -412,6 +445,12 @@ export default function DashboardScreen() {
     }
   }, [availableYears, selectedYear]);
 
+  useEffect(() => {
+    setOverallYearModalVisible(false);
+    setMonthlyMonthModalVisible(false);
+    setYearlyYearModalVisible(false);
+  }, [activeTab]);
+
   const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
   const getTabLabel = () => {
@@ -527,38 +566,35 @@ export default function DashboardScreen() {
         ) : (
           <>
             {!subscriptions.length ? (
-              <Text style={styles.emptyText}>Add a subscription to see your spend.</Text>
+              <View style={styles.emptyCard}>
+                <Text style={styles.emptyTitle}>No subscriptions yet</Text>
+                <Text style={styles.emptySubtext}>Add a subscription to see your spend breakdown.</Text>
+              </View>
             ) : null}
             <View style={styles.headerRow}>
               <Text style={styles.sectionTitle}>{getTabLabel()}</Text>
-              {activeTab === 'overall' || activeTab === 'yearly' ? (
-                <View style={styles.pickerRow}>
-                  {availableYears.map((year) => (
-                    <TouchableOpacity
-                      key={year}
-                      onPress={() => setSelectedYear(year)}
-                      style={[styles.pickerItem, selectedYear === year && styles.pickerItemActive]}
-                    >
-                      <Text style={[styles.pickerText, selectedYear === year && styles.pickerTextActive]}>
-                        {year}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
+              {activeTab === 'overall' ? (
+                <View style={styles.selectorRow}>
+                  <Pressable style={styles.selectorField} onPress={() => setOverallYearModalVisible(true)}>
+                    <Text style={styles.selectorLabel}>Year</Text>
+                    <Text style={styles.selectorValue}>{selectedYear}</Text>
+                  </Pressable>
                 </View>
               ) : null}
               {activeTab === 'monthly' ? (
-                <View style={styles.pickerRow}>
-                  {monthNames.map((name, idx) => (
-                    <TouchableOpacity
-                      key={idx}
-                      onPress={() => setSelectedMonth(idx)}
-                      style={[styles.pickerItem, selectedMonth === idx && styles.pickerItemActive]}
-                    >
-                      <Text style={[styles.pickerText, selectedMonth === idx && styles.pickerTextActive]}>
-                        {name}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
+                <View style={styles.selectorRow}>
+                  <Pressable style={styles.selectorField} onPress={() => setMonthlyMonthModalVisible(true)}>
+                    <Text style={styles.selectorLabel}>Month</Text>
+                    <Text style={styles.selectorValue}>{monthNames[selectedMonth]}</Text>
+                  </Pressable>
+                </View>
+              ) : null}
+              {activeTab === 'yearly' ? (
+                <View style={styles.selectorRow}>
+                  <Pressable style={styles.selectorField} onPress={() => setYearlyYearModalVisible(true)}>
+                    <Text style={styles.selectorLabel}>Year</Text>
+                    <Text style={styles.selectorValue}>{selectedYear}</Text>
+                  </Pressable>
                 </View>
               ) : null}
             </View>
@@ -583,7 +619,9 @@ export default function DashboardScreen() {
                 </View>
               </View>
             ) : (
-              <Text style={styles.emptyText}>No data for selected period</Text>
+              <View style={[styles.chartSection, styles.chartPlaceholderCard]}>
+                <Text style={styles.emptyText}>No data for the selected period yet.</Text>
+              </View>
             )}
 
             <View style={styles.insightsSection}>
@@ -650,6 +688,87 @@ export default function DashboardScreen() {
           </>
         )}
       </ScrollView>
+
+      <Modal
+        visible={overallYearModalVisible && activeTab === 'overall'}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setOverallYearModalVisible(false)}
+      >
+        <Pressable style={styles.modalBackdrop} onPress={() => setOverallYearModalVisible(false)}>
+          <Pressable style={styles.selectorModalCard} onPress={(e) => e.stopPropagation()}>
+            <Text style={styles.modalTitle}>Select year</Text>
+            <View style={styles.modalOptionsList}>
+              {availableYears.map((year) => (
+                <Pressable
+                  key={year}
+                  style={styles.modalOption}
+                  onPress={() => {
+                    setSelectedYear(year);
+                    setOverallYearModalVisible(false);
+                  }}
+                >
+                  <Text style={[styles.modalOptionText, selectedYear === year && styles.modalOptionTextActive]}>{year}</Text>
+                </Pressable>
+              ))}
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal
+        visible={monthlyMonthModalVisible && activeTab === 'monthly'}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setMonthlyMonthModalVisible(false)}
+      >
+        <Pressable style={styles.modalBackdrop} onPress={() => setMonthlyMonthModalVisible(false)}>
+          <Pressable style={styles.selectorModalCard} onPress={(e) => e.stopPropagation()}>
+            <Text style={styles.modalTitle}>Select month</Text>
+            <View style={styles.modalOptionsList}>
+              {monthNames.map((name, idx) => (
+                <Pressable
+                  key={name}
+                  style={styles.modalOption}
+                  onPress={() => {
+                    setSelectedMonth(idx);
+                    setMonthlyMonthModalVisible(false);
+                  }}
+                >
+                  <Text style={[styles.modalOptionText, selectedMonth === idx && styles.modalOptionTextActive]}>{name}</Text>
+                </Pressable>
+              ))}
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal
+        visible={yearlyYearModalVisible && activeTab === 'yearly'}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setYearlyYearModalVisible(false)}
+      >
+        <Pressable style={styles.modalBackdrop} onPress={() => setYearlyYearModalVisible(false)}>
+          <Pressable style={styles.selectorModalCard} onPress={(e) => e.stopPropagation()}>
+            <Text style={styles.modalTitle}>Select year</Text>
+            <View style={styles.modalOptionsList}>
+              {availableYears.map((year) => (
+                <Pressable
+                  key={year}
+                  style={styles.modalOption}
+                  onPress={() => {
+                    setSelectedYear(year);
+                    setYearlyYearModalVisible(false);
+                  }}
+                >
+                  <Text style={[styles.modalOptionText, selectedYear === year && styles.modalOptionTextActive]}>{year}</Text>
+                </Pressable>
+              ))}
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       <Modal
         visible={!!categoryModal}
@@ -849,6 +968,14 @@ const styles = StyleSheet.create({
     color: '#6b7280',
     fontSize: 14,
   },
+  chartPlaceholderCard: {
+    backgroundColor: '#fff',
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    alignItems: 'center',
+  },
   legend: {
     gap: 12,
   },
@@ -879,12 +1006,55 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 40,
   },
+  emptyCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    marginBottom: 12,
+    gap: 6,
+  },
+  emptyTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#0f172a',
+  },
+  emptySubtext: {
+    fontSize: 14,
+    color: '#6b7280',
+  },
   modalBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.35)',
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
+  },
+  selectorRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  selectorField: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  selectorLabel: {
+    fontSize: 12,
+    color: '#6b7280',
+    marginRight: 10,
+  },
+  selectorValue: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#0f172a',
   },
   modalCard: {
     width: '100%',
@@ -944,5 +1114,30 @@ const styles = StyleSheet.create({
   modalCloseText: {
     color: '#fff',
     fontWeight: '700',
+  },
+  selectorModalCard: {
+    width: '100%',
+    borderRadius: 12,
+    backgroundColor: '#fff',
+    padding: 16,
+    gap: 10,
+  },
+  modalOptionsList: {
+    gap: 8,
+  },
+  modalOption: {
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    backgroundColor: '#f3f4f6',
+  },
+  modalOptionText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#0f172a',
+  },
+  modalOptionTextActive: {
+    color: '#111827',
+    textDecorationLine: 'underline',
   },
 });
