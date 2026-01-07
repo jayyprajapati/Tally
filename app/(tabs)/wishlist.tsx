@@ -13,7 +13,7 @@ const formatCurrency = (value: number) =>
   `₹${value.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
 
 const categories = ['General', 'Entertainment', 'Productivity', 'Fitness', 'Finance', 'Education', 'Other'];
-const billingTypes: Subscription['billingType'][] = ['monthly', 'yearly', 'lifetime'];
+const billingTypes: Subscription['billingType'][] = ['weekly', 'monthly', 'yearly', 'lifetime'];
 const statuses: Subscription['status'][] = ['active', 'wishlist'];
 
 export default function WishlistScreen() {
@@ -140,6 +140,7 @@ export default function WishlistScreen() {
   const renderItem = ({ item }: { item: Subscription }) => {
     const meta = categoryMeta[(item.category as CategoryKey) ?? 'Other'] ?? categoryMeta.Other;
     const isLifetime = item.billingType === 'lifetime';
+    const isUserPaying = item.userPaying !== false;
     const linkedCredential = item.linkedCredentialId ? credentialMap[item.linkedCredentialId] : undefined;
     const linkedMask = linkedCredential ? maskCredentialValue(linkedCredential) : 'None';
 
@@ -151,7 +152,7 @@ export default function WishlistScreen() {
           </View>
           <View style={styles.headerTextGroup}>
             <Text style={styles.name}>{item.name}</Text>
-            {!isLifetime ? <Text style={styles.amount}>{formatCurrency(item.amount)}</Text> : null}
+            {!isLifetime && isUserPaying ? <Text style={styles.amount}>{formatCurrency(item.amount)}</Text> : null}
             <View style={styles.badgeRow}>
               <View style={[styles.categoryBadge, { backgroundColor: `${meta.color}22` }]}> 
                 <Text style={[styles.categoryText, { color: meta.color }]}>{item.category}</Text>
@@ -161,7 +162,9 @@ export default function WishlistScreen() {
               </View>
               {item.accessType === 'shared' ? (
                 <View style={styles.sharedBadge}> 
-                  <Text style={styles.sharedText}>Shared</Text>
+                  <Text style={styles.sharedText}>
+                    {isUserPaying ? 'Shared' : 'Shared (Not Paid by You)'}
+                  </Text>
                 </View>
               ) : null}
               <View style={[styles.billingBadge, isLifetime && styles.lifetimeBadge]}> 
@@ -170,6 +173,9 @@ export default function WishlistScreen() {
                 </Text>
               </View>
             </View>
+            {!isUserPaying && item.accessType === 'shared' ? (
+              <Text style={styles.sharedNote}>Shared (Not Paid by You) — excluded from spend totals</Text>
+            ) : null}
           </View>
         </View>
 
@@ -458,6 +464,11 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: '#2563EB',
+  },
+  sharedNote: {
+    marginTop: 4,
+    fontSize: 12,
+    color: '#6b7280',
   },
   screenTitle: {
     fontSize: 24,

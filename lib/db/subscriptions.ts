@@ -1,7 +1,7 @@
 import * as Notifications from 'expo-notifications';
 import { openDatabaseAsync, type SQLiteDatabase } from 'expo-sqlite';
 
-export type BillingType = 'monthly' | 'yearly' | 'lifetime';
+export type BillingType = 'weekly' | 'monthly' | 'yearly' | 'lifetime';
 export type SubscriptionStatus = 'active' | 'wishlist';
 export type SubscriptionAccessType = 'owned' | 'shared';
 
@@ -15,6 +15,7 @@ export interface Subscription {
   status: SubscriptionStatus;
   accessType: SubscriptionAccessType;
   sharedMembers: string[];
+  userPaying?: boolean;
   hasStopDate: boolean;
   stopDate: string | Date | null;
   linkedCredentialId?: string;
@@ -50,6 +51,7 @@ export async function initializeDatabase(): Promise<void> {
       status TEXT NOT NULL,
       accessType TEXT NOT NULL DEFAULT 'owned',
       sharedMembers TEXT,
+      userPaying INTEGER NOT NULL DEFAULT 1,
       hasStopDate INTEGER NOT NULL DEFAULT 0,
       stopDate TEXT,
       linkedCredentialId TEXT,
@@ -91,6 +93,7 @@ const ensureNewColumns = async (db: SQLiteDatabase) => {
   await addIfMissing('reminderNotificationId', 'ALTER TABLE subscriptions ADD COLUMN reminderNotificationId TEXT;');
   await addIfMissing('accessType', "ALTER TABLE subscriptions ADD COLUMN accessType TEXT NOT NULL DEFAULT 'owned';");
   await addIfMissing('sharedMembers', 'ALTER TABLE subscriptions ADD COLUMN sharedMembers TEXT;');
+  await addIfMissing('userPaying', 'ALTER TABLE subscriptions ADD COLUMN userPaying INTEGER NOT NULL DEFAULT 1;');
   await addIfMissing('hasStopDate', 'ALTER TABLE subscriptions ADD COLUMN hasStopDate INTEGER NOT NULL DEFAULT 0;');
   await addIfMissing('stopDate', 'ALTER TABLE subscriptions ADD COLUMN stopDate TEXT;');
 };
@@ -111,6 +114,7 @@ const toStored = (subscription: Subscription) => {
     startDate,
     accessType: subscription.accessType ?? 'owned',
     sharedMembers: JSON.stringify(subscription.sharedMembers ?? []),
+    userPaying: subscription.userPaying === false ? 0 : 1,
     hasStopDate: subscription.hasStopDate ? 1 : 0,
     stopDate,
     reminderEnabled: subscription.reminderEnabled ? 1 : 0,
@@ -128,6 +132,7 @@ const toSubscription = (row: any): Subscription => ({
   startDate: row.startDate,
   status: row.status as SubscriptionStatus,
   accessType: (row.accessType as SubscriptionAccessType) ?? 'owned',
+  userPaying: row.userPaying === 0 ? false : true,
   sharedMembers: (() => {
     if (!row.sharedMembers) return [];
     try {
@@ -158,8 +163,8 @@ export async function addSubscription(subscription: Subscription): Promise<void>
 
   await db.runAsync(
     `INSERT OR REPLACE INTO subscriptions (
-      id, name, category, billingType, amount, startDate, status, accessType, sharedMembers, hasStopDate, stopDate, linkedCredentialId, notes, reminderEnabled, reminderDaysBefore, reminderNotificationId
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+      id, name, category, billingType, amount, startDate, status, accessType, sharedMembers, userPaying, hasStopDate, stopDate, linkedCredentialId, notes, reminderEnabled, reminderDaysBefore, reminderNotificationId
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
     [
       record.id,
       record.name,
@@ -170,6 +175,7 @@ export async function addSubscription(subscription: Subscription): Promise<void>
       record.status,
       record.accessType,
       record.sharedMembers,
+      record.userPaying,
       record.hasStopDate ?? 0,
       record.stopDate ?? null,
       record.linkedCredentialId ?? null,
@@ -208,7 +214,7 @@ export async function updateSubscription(subscription: Subscription): Promise<vo
 
   await db.runAsync(
     `UPDATE subscriptions
-      SET name = ?, category = ?, billingType = ?, amount = ?, startDate = ?, status = ?, accessType = ?, sharedMembers = ?, hasStopDate = ?, stopDate = ?, linkedCredentialId = ?, notes = ?, reminderEnabled = ?, reminderDaysBefore = ?, reminderNotificationId = ?
+      SET name = ?, category = ?, billingType = ?, amount = ?, startDate = ?, status = ?, accessType = ?, sharedMembers = ?, userPaying = ?, hasStopDate = ?, stopDate = ?, linkedCredentialId = ?, notes = ?, reminderEnabled = ?, reminderDaysBefore = ?, reminderNotificationId = ?
       WHERE id = ?;`,
     [
       record.name,
@@ -219,6 +225,7 @@ export async function updateSubscription(subscription: Subscription): Promise<vo
       record.status,
       record.accessType,
       record.sharedMembers,
+      record.userPaying,
       record.hasStopDate ?? 0,
       record.stopDate ?? null,
       record.linkedCredentialId ?? null,

@@ -24,6 +24,8 @@ export default function RootLayout() {
         <Stack>
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="add-subscription" options={{ title: 'Add Subscription', presentation: 'modal' }} />
+          <Stack.Screen name="linked-accounts" options={{ title: 'Linked Accounts' }} />
+          <Stack.Screen name="linked-cards" options={{ title: 'Linked Cards' }} />
         </Stack>
         <StatusBar style="dark" />
       </ThemeProvider>

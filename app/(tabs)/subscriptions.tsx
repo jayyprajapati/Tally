@@ -10,9 +10,9 @@ import CredentialReveal from '@/components/credential-reveal';
 import { Credential, getAllCredentials, maskCredentialValue } from '@/lib/db/credentials';
 import { OneTimeItem, addOneTimeItem, getAllOneTimeItems } from '@/lib/db/onetime-items';
 import {
-  Subscription,
-  deleteSubscription,
-  getAllSubscriptions,
+    Subscription,
+    deleteSubscription,
+    getAllSubscriptions,
 } from '@/lib/db/subscriptions';
 
 const formatCurrency = (value: number) =>
@@ -21,7 +21,7 @@ const formatDate = (value: string | Date) =>
   (value instanceof Date ? value.toISOString() : new Date(value).toISOString()).slice(0, 10);
 
 const categories = ['General', 'Entertainment', 'Productivity', 'Fitness', 'Finance', 'Education', 'Other'];
-const billingTypes: Subscription['billingType'][] = ['monthly', 'yearly', 'lifetime'];
+const billingTypes: Subscription['billingType'][] = ['weekly', 'monthly', 'yearly', 'lifetime'];
 const statuses: Subscription['status'][] = ['active', 'wishlist'];
 
 export default function SubscriptionsScreen() {
@@ -215,6 +215,7 @@ export default function SubscriptionsScreen() {
   const renderItem = ({ item }: { item: Subscription }) => {
     const meta = categoryMeta[(item.category as CategoryKey) ?? 'Other'] ?? categoryMeta.Other;
     const isLifetime = item.billingType === 'lifetime';
+    const isUserPaying = item.userPaying !== false;
     const statusColor = item.status === 'active' ? '#DCFCE7' : '#E0F2FE';
     const statusTextColor = item.status === 'active' ? '#166534' : '#0F172A';
     const linkedCredential = item.linkedCredentialId ? credentialMap[item.linkedCredentialId] : undefined;
@@ -228,7 +229,7 @@ export default function SubscriptionsScreen() {
           </View>
           <View style={styles.headerTextGroup}>
             <Text style={styles.name}>{item.name}</Text>
-            {!isLifetime ? <Text style={styles.amount}>{formatCurrency(item.amount)}</Text> : null}
+            {!isLifetime && isUserPaying ? <Text style={styles.amount}>{formatCurrency(item.amount)}</Text> : null}
             <View style={styles.badgeRow}>
               <View style={[styles.categoryBadge, { backgroundColor: `${meta.color}22` }]}> 
                 <Text style={[styles.categoryText, { color: meta.color }]}>{item.category}</Text>
@@ -240,7 +241,9 @@ export default function SubscriptionsScreen() {
               </View>
               {item.accessType === 'shared' ? (
                 <View style={styles.sharedBadge}> 
-                  <Text style={styles.sharedText}>Shared</Text>
+                  <Text style={styles.sharedText}>
+                    {isUserPaying ? 'Shared' : 'Shared (Not Paid by You)'}
+                  </Text>
                 </View>
               ) : null}
               <View style={[styles.billingBadge, isLifetime && styles.lifetimeBadge]}> 
@@ -249,6 +252,9 @@ export default function SubscriptionsScreen() {
                 </Text>
               </View>
             </View>
+            {!isUserPaying && item.accessType === 'shared' ? (
+              <Text style={styles.sharedNote}>Shared (Not Paid by You) — excluded from spend totals</Text>
+            ) : null}
           </View>
         </View>
 
@@ -667,6 +673,11 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: '#2563EB',
+  },
+  sharedNote: {
+    marginTop: 4,
+    fontSize: 12,
+    color: '#6b7280',
   },
   screenTitle: {
     fontSize: 24,

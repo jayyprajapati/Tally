@@ -1,6 +1,6 @@
 import { openDatabaseAsync, type SQLiteDatabase } from 'expo-sqlite';
 
-export type CredentialType = 'personalEmail' | 'workEmail' | 'mobileNumber' | 'custom';
+export type CredentialType = 'personalEmail' | 'workEmail' | 'mobileNumber' | 'custom' | 'card';
 
 export interface Credential {
   id: string;
@@ -73,6 +73,10 @@ export const maskCredentialValue = (credential: Credential): string => {
   }
   if (credential.type === 'mobileNumber') {
     return maskPhone(credential.value);
+  }
+  if (credential.type === 'card') {
+    const digits = credential.value.replace(/\D/g, '').slice(-4) || credential.value.slice(-4);
+    return `**** ${digits.padStart(4, '*')}`;
   }
   return maskGeneric(credential.value);
 };

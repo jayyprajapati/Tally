@@ -52,6 +52,25 @@ const polarToCartesian = (cx: number, cy: number, r: number, angle: number) => (
   y: cy + r * Math.sin(angle),
 });
 
+const clampRange = (start: Date, end: Date, windowStart: Date, windowEnd: Date) => {
+  const clampedStart = start > windowStart ? start : windowStart;
+  const clampedEnd = end < windowEnd ? end : windowEnd;
+  return { clampedStart, clampedEnd };
+};
+
+const countWeeklyOccurrencesInRange = (startDate: Date, rangeStart: Date, rangeEnd: Date): number => {
+  const MS_PER_DAY = 1000 * 60 * 60 * 24;
+  const { clampedStart, clampedEnd } = clampRange(startDate, rangeEnd, rangeStart, rangeEnd);
+  if (clampedEnd < clampedStart) return 0;
+
+  const startOffsetDays = Math.floor((clampedStart.getTime() - startDate.getTime()) / MS_PER_DAY);
+  const alignedOffset = startOffsetDays % 7 === 0 ? startOffsetDays : startOffsetDays + (7 - (startOffsetDays % 7));
+  const firstChargeTs = startDate.getTime() + alignedOffset * MS_PER_DAY;
+  if (firstChargeTs > clampedEnd.getTime()) return 0;
+  const remainingDays = Math.floor((clampedEnd.getTime() - firstChargeTs) / MS_PER_DAY);
+  return 1 + Math.floor(remainingDays / 7);
+};
+
 const monthsBetween = (from: Date, to: Date) =>
   (to.getFullYear() - from.getFullYear()) * 12 + (to.getMonth() - from.getMonth());
 
@@ -274,12 +293,21 @@ export default function DashboardScreen() {
 
       base.forEach((sub) => {
         if (sub.billingType === 'lifetime') return;
+        if (sub.userPaying === false) return;
 
         const stop = sub.hasStopDate ? sub.stopDate : null;
 
         let spend = 0;
 
-        if (sub.billingType === 'monthly') {
+        if (sub.billingType === 'weekly') {
+          const start = typeof sub.startDate === 'string' ? new Date(sub.startDate) : sub.startDate;
+          const windowStart = new Date(selectedYear, 0, 1);
+          const windowEnd = new Date(selectedYear, 11, 31, 23, 59, 59, 999);
+          const stopDate = stop ? (typeof stop === 'string' ? new Date(stop) : stop) : null;
+          const effectiveEnd = stopDate && stopDate < windowEnd ? stopDate : windowEnd;
+          const occurrences = countWeeklyOccurrencesInRange(start, windowStart, effectiveEnd);
+          spend = sub.amount * occurrences;
+        } else if (sub.billingType === 'monthly') {
           const months = getMonthsInYear(sub.startDate, selectedYear, stop);
           spend = sub.amount * months;
         } else if (sub.billingType === 'yearly') {
@@ -321,6 +349,24 @@ export default function DashboardScreen() {
       let totalSpend = 0;
 
       base.forEach((sub) => {
+        if (sub.userPaying === false) return;
+
+        if (sub.billingType === 'weekly') {
+          const start = typeof sub.startDate === 'string' ? new Date(sub.startDate) : sub.startDate;
+          const windowStart = new Date(selectedYear, selectedMonth, 1);
+          const windowEnd = new Date(selectedYear, selectedMonth + 1, 0, 23, 59, 59, 999);
+          const stopDate = sub.hasStopDate ? (typeof sub.stopDate === 'string' ? new Date(sub.stopDate) : sub.stopDate) : null;
+          const effectiveEnd = stopDate && stopDate < windowEnd ? stopDate : windowEnd;
+          const occurrences = countWeeklyOccurrencesInRange(start, windowStart, effectiveEnd);
+          if (occurrences > 0) {
+            const key = sub.category || 'Other';
+            const spend = sub.amount * occurrences;
+            categoryTotals[key] = (categoryTotals[key] ?? 0) + spend;
+            totalSpend += spend;
+          }
+          return;
+        }
+
         if (sub.billingType !== 'monthly') return;
 
         if (isSubscriptionActiveInMonth(sub.startDate, selectedYear, selectedMonth, sub.hasStopDate ? sub.stopDate : null)) {
@@ -346,6 +392,7 @@ export default function DashboardScreen() {
       let totalSpend = 0;
 
       base.forEach((sub) => {
+        if (sub.userPaying === false) return;
         if (sub.billingType !== 'yearly') return;
 
         if (isSubscriptionActiveInYear(sub.startDate, selectedYear, sub.hasStopDate ? sub.stopDate : null)) {
@@ -471,11 +518,22 @@ export default function DashboardScreen() {
       base.forEach((sub) => {
         if (sub.category !== category) return;
         if (sub.billingType === 'lifetime') return;
+        if (sub.userPaying === false) return;
 
         const stop = sub.hasStopDate ? sub.stopDate : null;
 
         if (activeTab === 'overall') {
-          if (sub.billingType === 'monthly') {
+          if (sub.billingType === 'weekly') {
+            const start = typeof sub.startDate === 'string' ? new Date(sub.startDate) : sub.startDate;
+            const windowStart = new Date(selectedYear, 0, 1);
+            const windowEnd = new Date(selectedYear, 11, 31, 23, 59, 59, 999);
+            const stopDate = stop ? (typeof stop === 'string' ? new Date(stop) : stop) : null;
+            const effectiveEnd = stopDate && stopDate < windowEnd ? stopDate : windowEnd;
+            const occurrences = countWeeklyOccurrencesInRange(start, windowStart, effectiveEnd);
+            if (occurrences > 0) {
+              entries.push({ type: 'subscription', item: sub, contribution: sub.amount * occurrences });
+            }
+          } else if (sub.billingType === 'monthly') {
             const months = getMonthsInYear(sub.startDate, selectedYear, stop);
             if (months > 0) {
               entries.push({ type: 'subscription', item: sub, contribution: sub.amount * months });
@@ -492,6 +550,19 @@ export default function DashboardScreen() {
         }
 
         if (activeTab === 'monthly') {
+          if (sub.billingType === 'weekly') {
+            const start = typeof sub.startDate === 'string' ? new Date(sub.startDate) : sub.startDate;
+            const windowStart = new Date(selectedYear, selectedMonth, 1);
+            const windowEnd = new Date(selectedYear, selectedMonth + 1, 0, 23, 59, 59, 999);
+            const stopDate = stop ? (typeof stop === 'string' ? new Date(stop) : stop) : null;
+            const effectiveEnd = stopDate && stopDate < windowEnd ? stopDate : windowEnd;
+            const occurrences = countWeeklyOccurrencesInRange(start, windowStart, effectiveEnd);
+            if (occurrences > 0) {
+              entries.push({ type: 'subscription', item: sub, contribution: sub.amount * occurrences });
+            }
+            return;
+          }
+
           if (sub.billingType !== 'monthly') return;
           if (isSubscriptionActiveInMonth(sub.startDate, selectedYear, selectedMonth, stop)) {
             entries.push({ type: 'subscription', item: sub, contribution: sub.amount });

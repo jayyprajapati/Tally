@@ -27,7 +27,7 @@ import {
 import { ReminderDaysBefore, cancelSubscriptionReminder, scheduleSubscriptionReminder } from '@/lib/reminders';
 
 const categories = ['General', 'Entertainment', 'Productivity', 'Fitness', 'Finance', 'Education', 'Other'];
-const billingTypes: Subscription['billingType'][] = ['monthly', 'yearly', 'lifetime'];
+const billingTypes: Subscription['billingType'][] = ['weekly', 'monthly', 'yearly', 'lifetime'];
 const statuses: Subscription['status'][] = ['active', 'wishlist'];
 const reminderOptions: ReminderDaysBefore[] = [1, 3, 7];
 
@@ -64,6 +64,47 @@ const findSuggestion = (value: string): SubscriptionSuggestion | null => {
   return entry ? entry[1] : null;
 };
 
+const isStopDateAligned = (billingType: Subscription['billingType'], start: Date, stop: Date) => {
+  if (stop <= start) return false;
+
+  if (billingType === 'weekly') {
+    const diffDays = Math.round((stop.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+    return diffDays % 7 === 0;
+  }
+
+  if (billingType === 'monthly') {
+    return start.getDate() === stop.getDate();
+  }
+
+  if (billingType === 'yearly') {
+    return start.getDate() === stop.getDate() && start.getMonth() === stop.getMonth();
+  }
+
+  return true;
+};
+
+const getNextAlignedStopDate = (billingType: Subscription['billingType'], start: Date) => {
+  const next = new Date(start);
+
+  if (billingType === 'weekly') {
+    next.setDate(start.getDate() + 7);
+    return next;
+  }
+
+  if (billingType === 'monthly') {
+    next.setMonth(start.getMonth() + 1);
+    return next;
+  }
+
+  if (billingType === 'yearly') {
+    next.setFullYear(start.getFullYear() + 1);
+    return next;
+  }
+
+  next.setDate(start.getDate() + 1);
+  return next;
+};
+
 export default function AddSubscriptionScreen() {
   const router = useRouter();
   const { mode, id } = useLocalSearchParams<{ mode?: string; id?: string }>();
@@ -75,6 +116,7 @@ export default function AddSubscriptionScreen() {
   const [amount, setAmount] = useState('');
   const [status, setStatus] = useState<Subscription['status']>('active');
   const [accessType, setAccessType] = useState<Subscription['accessType']>('owned');
+  const [userPaying, setUserPaying] = useState<boolean>(true);
   const [sharedMembers, setSharedMembers] = useState<string[]>([]);
   const [startDate, setStartDate] = useState<Date>(new Date());
   const [hasStopDate, setHasStopDate] = useState(false);
@@ -87,6 +129,7 @@ export default function AddSubscriptionScreen() {
   const [credentials, setCredentials] = useState<Credential[]>([]);
   const [linkedCredentialId, setLinkedCredentialId] = useState<string | undefined>(undefined);
   const [pickerVisible, setPickerVisible] = useState(false);
+  const [categoryPickerVisible, setCategoryPickerVisible] = useState(false);
   const [categoryLocked, setCategoryLocked] = useState(false);
   const [billingLocked, setBillingLocked] = useState(false);
   const [amountLocked, setAmountLocked] = useState(false);
@@ -127,6 +170,7 @@ export default function AddSubscriptionScreen() {
       setAmount(existing.billingType === 'lifetime' ? '' : String(existing.amount));
       setStatus(existing.status);
       setAccessType(existing.accessType ?? 'owned');
+      setUserPaying(existing.userPaying !== false);
       setSharedMembers((existing.sharedMembers ?? []).slice(0, 10));
       setStartDate(new Date(existing.startDate));
       setHasStopDate(Boolean(existing.hasStopDate));
@@ -184,11 +228,14 @@ export default function AddSubscriptionScreen() {
   useEffect(() => {
     if (!hasStopDate || !stopDate) return;
     if (stopDate <= startDate) {
-      const nextDay = new Date(startDate);
-      nextDay.setDate(nextDay.getDate() + 1);
-      setStopDate(nextDay);
+      setStopDate(getNextAlignedStopDate(billingType, startDate));
+      return;
     }
-  }, [hasStopDate, startDate, stopDate]);
+
+    if (!isStopDateAligned(billingType, startDate, stopDate)) {
+      setStopDate(getNextAlignedStopDate(billingType, startDate));
+    }
+  }, [billingType, hasStopDate, startDate, stopDate]);
 
   const onSubmit = async () => {
     if (hydrating) return;
@@ -198,7 +245,8 @@ export default function AddSubscriptionScreen() {
     }
 
     const numericAmount = parseFloat(amount);
-    const needsAmount = billingType !== 'lifetime';
+    const paying = !(accessType === 'shared' && !userPaying);
+    const needsAmount = billingType !== 'lifetime' && paying;
 
     if (needsAmount && (Number.isNaN(numericAmount) || numericAmount <= 0)) {
       Alert.alert('Amount required', 'Enter a valid amount greater than 0.');
@@ -223,6 +271,11 @@ export default function AddSubscriptionScreen() {
       return;
     }
 
+    if (hasStopDate && stopDate && !isStopDateAligned(billingType, startDate, stopDate)) {
+      Alert.alert('Invalid stop date', 'Stop date must align with the selected billing cycle.');
+      return;
+    }
+
     const basePayload: Subscription = {
       id: isEdit && id ? id : Date.now().toString(),
       name: name.trim(),
@@ -232,6 +285,7 @@ export default function AddSubscriptionScreen() {
       startDate: startDate.toISOString(),
       status,
       accessType,
+      userPaying: paying,
       sharedMembers: effectiveSharedMembers,
       hasStopDate,
       stopDate: hasStopDate && stopDate ? stopDate.toISOString() : null,
@@ -242,7 +296,7 @@ export default function AddSubscriptionScreen() {
       reminderNotificationId,
     };
 
-    const shouldScheduleReminder = reminderEnabled && billingType !== 'lifetime' && status === 'active';
+    const shouldScheduleReminder = reminderEnabled && billingType !== 'lifetime' && status === 'active' && paying;
     let nextNotificationId = reminderNotificationId;
 
     if (reminderNotificationId) {
@@ -309,7 +363,10 @@ export default function AddSubscriptionScreen() {
             <Text style={styles.label}>Name</Text>
             <TextInput
               value={name}
-              onChangeText={handleNameChange}
+              onChangeText={(text) => {
+                setName(text);
+                setNameLocked(true);
+              }}
               placeholder="e.g. Netflix"
               placeholderTextColor="#6b7280"
               style={styles.input}
@@ -320,19 +377,10 @@ export default function AddSubscriptionScreen() {
 
           <View style={styles.fieldGroup}>
             <Text style={styles.label}>Category</Text>
-            <View style={styles.chipRow}>
-              {categories.map((cat) => (
-                <Pressable
-                  key={cat}
-                  onPress={() => {
-                    setCategory(cat as Subscription['category']);
-                    setCategoryLocked(true);
-                  }}
-                  style={[styles.chip, category === cat && styles.chipSelected]}>
-                  <Text style={[styles.chipText, category === cat && styles.chipTextSelected]}>{cat}</Text>
-                </Pressable>
-              ))}
-            </View>
+            <Pressable style={styles.selectorField} onPress={() => setCategoryPickerVisible(true)}>
+              <Text style={styles.selectorValue}>{category}</Text>
+              <Text style={styles.selectorHint}>Change</Text>
+            </Pressable>
           </View>
 
           <View style={styles.fieldGroup}>
@@ -372,7 +420,7 @@ export default function AddSubscriptionScreen() {
               placeholderTextColor="#6b7280"
               keyboardType="decimal-pad"
               style={styles.input}
-              editable={billingType !== 'lifetime'}
+              editable={billingType !== 'lifetime' && !(accessType === 'shared' && !userPaying)}
             />
           </View>
 
@@ -402,6 +450,7 @@ export default function AddSubscriptionScreen() {
                     setAccessType(type);
                     if (type === 'owned') {
                       setSharedMembers([]);
+                      setUserPaying(true);
                     }
                   }}
                   style={[styles.segment, accessType === type && styles.segmentSelected]}
@@ -413,6 +462,33 @@ export default function AddSubscriptionScreen() {
               ))}
             </View>
           </View>
+
+          {accessType === 'shared' ? (
+            <View style={styles.fieldGroup}>
+              <Text style={styles.label}>Who is paying?</Text>
+              <View style={styles.segmentRow}>
+                <Pressable
+                  style={[styles.segment, userPaying && styles.segmentSelected]}
+                  onPress={() => setUserPaying(true)}
+                >
+                  <Text style={[styles.segmentText, userPaying && styles.segmentTextSelected]}>You</Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.segment, !userPaying && styles.segmentSelected]}
+                  onPress={() => {
+                    setUserPaying(false);
+                    setAmount('');
+                    setAmountLocked(true);
+                  }}
+                >
+                  <Text style={[styles.segmentText, !userPaying && styles.segmentTextSelected]}>Someone else</Text>
+                </Pressable>
+              </View>
+              {!userPaying ? (
+                <Text style={styles.helperText}>Marked as Shared (Not Paid by You). Amount is excluded from spend.</Text>
+              ) : null}
+            </View>
+          ) : null}
 
           {accessType === 'shared' ? (
             <View style={styles.fieldGroup}>
@@ -502,9 +578,7 @@ export default function AddSubscriptionScreen() {
                     setStopDate(null);
                     setShowStopPicker(false);
                   } else if (!stopDate) {
-                    const tomorrow = new Date(startDate);
-                    tomorrow.setDate(tomorrow.getDate() + 1);
-                    setStopDate(tomorrow);
+                    setStopDate(getNextAlignedStopDate(billingType, startDate));
                   }
                 }}
               />
@@ -527,7 +601,11 @@ export default function AddSubscriptionScreen() {
                         return;
                       }
                       if (date) {
-                        setStopDate(date);
+                        if (isStopDateAligned(billingType, startDate, date)) {
+                          setStopDate(date);
+                        } else {
+                          Alert.alert('Invalid stop date', 'Stop date must align with the billing cycle.');
+                        }
                       }
                       setShowStopPicker(false);
                     }}
@@ -590,6 +668,29 @@ export default function AddSubscriptionScreen() {
           </Pressable>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      <Modal visible={categoryPickerVisible} transparent animationType="fade" onRequestClose={() => setCategoryPickerVisible(false)}>
+        <Pressable style={styles.modalBackdrop} onPress={() => setCategoryPickerVisible(false)}>
+          <Pressable style={styles.selectorModalCard} onPress={(e) => e.stopPropagation()}>
+            <Text style={styles.pickerTitle}>Select category</Text>
+            <ScrollView style={styles.pickerList}>
+              {categories.map((cat) => (
+                <Pressable
+                  key={cat}
+                  style={[styles.modalOption, category === cat && styles.modalOptionActive]}
+                  onPress={() => {
+                    setCategory(cat as Subscription['category']);
+                    setCategoryLocked(true);
+                    setCategoryPickerVisible(false);
+                  }}
+                >
+                  <Text style={[styles.modalOptionText, category === cat && styles.modalOptionTextActive]}>{cat}</Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       <Modal visible={pickerVisible} transparent animationType="slide" onRequestClose={() => setPickerVisible(false)}>
         <View style={styles.pickerBackdrop}>
@@ -669,6 +770,26 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     backgroundColor: '#fff',
     fontSize: 16,
+  },
+  selectorField: {
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    backgroundColor: '#fff',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  selectorValue: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  selectorHint: {
+    fontSize: 13,
+    color: '#6b7280',
   },
   multiline: {
     minHeight: 80,
@@ -762,6 +883,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 24,
   },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
   pickerCard: {
     width: '100%',
     backgroundColor: '#fff',
@@ -817,6 +945,35 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
     gap: 8,
   },
+  selectorModalCard: {
+    width: '100%',
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  modalOption: {
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    marginBottom: 8,
+  },
+  modalOptionActive: {
+    borderColor: '#111827',
+    backgroundColor: '#f3f4f6',
+  },
+  modalOptionText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  modalOptionTextActive: {
+    color: '#0f172a',
+    textDecorationLine: 'underline',
+  },
   pickerButton: {
     paddingVertical: 10,
     paddingHorizontal: 14,
@@ -871,5 +1028,9 @@ const styles = StyleSheet.create({
   addMemberText: {
     color: '#fff',
     fontWeight: '700',
+  },
+  helperText: {
+    fontSize: 12,
+    color: '#6b7280',
   },
 });
