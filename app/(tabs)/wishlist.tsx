@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import CredentialReveal from '@/components/credential-reveal';
@@ -255,13 +255,13 @@ export default function WishlistScreen() {
       <Modal
         visible={filterModalVisible}
         transparent
-        animationType="slide"
+        animationType="fade"
         onRequestClose={() => setFilterModalVisible(false)}
       >
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
+        <Pressable style={styles.modalBackdrop} onPress={() => setFilterModalVisible(false)}>
+          <Pressable style={styles.modalCard} onPress={(e) => e.stopPropagation()}>
             <Text style={styles.modalTitle}>Filters</Text>
-            <ScrollView contentContainerStyle={styles.modalBody}>
+            <View style={styles.modalBody}>
               <View style={styles.filterGroup}>
                 <Text style={styles.filterLabel}>Category</Text>
                 <View style={styles.chipRowWrap}>
@@ -360,7 +360,7 @@ export default function WishlistScreen() {
 
               <View style={styles.filterGroup}>
                 <Text style={styles.filterLabel}>Linked account</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalChips}>
+                <View style={styles.chipRowWrap}>
                   <Pressable
                     style={[styles.filterChip, draftFilters.credential === 'all' && styles.filterChipActive]}
                     onPress={() => setDraftFilters((prev) => ({ ...prev, credential: 'all' }))}
@@ -387,9 +387,9 @@ export default function WishlistScreen() {
                       </Text>
                     </Pressable>
                   ))}
-                </ScrollView>
+                </View>
               </View>
-            </ScrollView>
+            </View>
             <View style={styles.pickerActions}>
               <Pressable
                 style={[styles.pickerButton, styles.clearButton]}
@@ -411,8 +411,8 @@ export default function WishlistScreen() {
                 <Text style={styles.closeText}>Apply Filters</Text>
               </Pressable>
             </View>
-          </View>
-        </View>
+          </Pressable>
+        </Pressable>
       </Modal>
     </SafeAreaView>
   );

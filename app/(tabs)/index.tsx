@@ -10,7 +10,7 @@ import {
   Switch,
   Text,
   TouchableOpacity,
-  View,
+  View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Circle, Path, Text as SvgText } from 'react-native-svg';
@@ -769,7 +769,7 @@ export default function DashboardScreen() {
       >
         <Pressable style={styles.modalBackdrop} onPress={() => setOverallYearModalVisible(false)}>
           <Pressable style={styles.selectorModalCard} onPress={(e) => e.stopPropagation()}>
-            <Text style={styles.modalTitle}>Select year</Text>
+            <Text style={styles.modalTitle}>Select Year</Text>
             <View style={styles.modalOptionsList}>
               {availableYears.map((year) => (
                 <Pressable
@@ -796,7 +796,7 @@ export default function DashboardScreen() {
       >
         <Pressable style={styles.modalBackdrop} onPress={() => setMonthlyMonthModalVisible(false)}>
           <Pressable style={styles.selectorModalCard} onPress={(e) => e.stopPropagation()}>
-            <Text style={styles.modalTitle}>Select month</Text>
+            <Text style={styles.modalTitle}>Select Month</Text>
             <View style={styles.modalOptionsList}>
               {monthNames.map((name, idx) => (
                 <Pressable
@@ -823,7 +823,7 @@ export default function DashboardScreen() {
       >
         <Pressable style={styles.modalBackdrop} onPress={() => setYearlyYearModalVisible(false)}>
           <Pressable style={styles.selectorModalCard} onPress={(e) => e.stopPropagation()}>
-            <Text style={styles.modalTitle}>Select year</Text>
+            <Text style={styles.modalTitle}>Select Year</Text>
             <View style={styles.modalOptionsList}>
               {availableYears.map((year) => (
                 <Pressable
@@ -844,8 +844,8 @@ export default function DashboardScreen() {
 
       <Modal
         visible={!!categoryModal}
-        animationType="slide"
         transparent
+        animationType="slide"
         onRequestClose={() => setCategoryModal(null)}
       >
         <View style={styles.modalBackdrop}>

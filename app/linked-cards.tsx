@@ -125,9 +125,9 @@ export default function LinkedCardsScreen() {
         </View>
       </ScrollView>
 
-      <Modal visible={modalVisible} transparent animationType="slide" onRequestClose={closeModal}>
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
+      <Modal visible={modalVisible} transparent animationType="fade" onRequestClose={closeModal}>
+        <Pressable style={styles.modalBackdrop} onPress={closeModal}>
+          <Pressable style={styles.modalCard} onPress={(e) => e.stopPropagation()}>
             <Text style={styles.modalTitle}>{editing?.isNew ? 'Add Card' : 'Edit Card'}</Text>
             <View style={styles.modalGroup}>
               <Text style={styles.modalLabel}>Card name</Text>
@@ -166,8 +166,8 @@ export default function LinkedCardsScreen() {
                 </Pressable>
               </View>
             </View>
-          </View>
-        </View>
+          </Pressable>
+        </Pressable>
       </Modal>
     </SafeAreaView>
   );

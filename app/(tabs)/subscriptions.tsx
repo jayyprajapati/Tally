@@ -1,14 +1,15 @@
 import { Ionicons } from '@expo/vector-icons';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { SUBSCRIPTION_FILTERS_KEY } from '@/app/subscription-filters';
 import CredentialReveal from '@/components/credential-reveal';
 import { Credential, getAllCredentials, maskCredentialValue } from '@/lib/db/credentials';
-import { OneTimeItem, addOneTimeItem, getAllOneTimeItems } from '@/lib/db/onetime-items';
+import { OneTimeItem, getAllOneTimeItems } from '@/lib/db/onetime-items';
 import {
   Subscription,
   deleteSubscription,
@@ -39,17 +40,8 @@ export default function SubscriptionsScreen() {
     [],
   );
   const [filters, setFilters] = useState(defaultFilters);
-  const [filterModalVisible, setFilterModalVisible] = useState(false);
   const [draftFilters, setDraftFilters] = useState(defaultFilters);
   const [loading, setLoading] = useState(false);
-  const [oneTimeModalVisible, setOneTimeModalVisible] = useState(false);
-  const [oneTimeSubmitting, setOneTimeSubmitting] = useState(false);
-  const [oneTimeName, setOneTimeName] = useState('');
-  const [oneTimePlatform, setOneTimePlatform] = useState('');
-  const [oneTimeCategory, setOneTimeCategory] = useState<string>('General');
-  const [oneTimeAmount, setOneTimeAmount] = useState('');
-  const [oneTimeDate, setOneTimeDate] = useState<Date>(new Date());
-  const [showOneTimeDatePicker, setShowOneTimeDatePicker] = useState(false);
   const [credentials, setCredentials] = useState<Credential[]>([]);
   const router = useRouter();
 
@@ -98,6 +90,19 @@ export default function SubscriptionsScreen() {
       loadSubscriptions();
       loadCredentials();
       loadOneTimeItems();
+
+      // Load filters from AsyncStorage
+      const loadFilters = async () => {
+        try {
+          const savedFilters = await AsyncStorage.getItem(SUBSCRIPTION_FILTERS_KEY);
+          if (savedFilters) {
+            setFilters(JSON.parse(savedFilters));
+          }
+        } catch (e) {
+          // Ignore errors
+        }
+      };
+      loadFilters();
     }, [loadSubscriptions, loadCredentials, loadOneTimeItems]),
   );
 
@@ -158,54 +163,14 @@ export default function SubscriptionsScreen() {
   };
 
   const handleOpenOneTime = () => {
-    resetOneTimeForm();
-    setOneTimeModalVisible(true);
+    router.push('/add-onetime');
   };
 
-  const resetOneTimeForm = () => {
-    setOneTimeName('');
-    setOneTimePlatform('');
-    setOneTimeCategory('General');
-    setOneTimeAmount('');
-    setOneTimeDate(new Date());
-    setShowOneTimeDatePicker(false);
-  };
-
-  const handleSaveOneTime = async () => {
-    if (oneTimeSubmitting) return;
-    if (!oneTimeName.trim()) {
-      Alert.alert('Name required', 'Please enter a name.');
-      return;
-    }
-    if (!oneTimePlatform.trim()) {
-      Alert.alert('Platform required', 'Please enter the platform.');
-      return;
-    }
-
-    const parsedAmount = parseFloat(oneTimeAmount);
-    if (Number.isNaN(parsedAmount) || parsedAmount <= 0) {
-      Alert.alert('Amount required', 'Enter an amount greater than 0.');
-      return;
-    }
-
-    const payload: OneTimeItem = {
-      id: Date.now().toString(),
-      name: oneTimeName.trim(),
-      platform: oneTimePlatform.trim(),
-      category: oneTimeCategory,
-      amount: parsedAmount,
-      date: oneTimeDate.toISOString(),
-    };
-
-    setOneTimeSubmitting(true);
-    try {
-      await addOneTimeItem(payload);
-      await loadOneTimeItems();
-      resetOneTimeForm();
-      setOneTimeModalVisible(false);
-    } finally {
-      setOneTimeSubmitting(false);
-    }
+  const handleOpenFilters = () => {
+    router.push({
+      pathname: '/subscription-filters',
+      params: { filters: JSON.stringify(filters) },
+    });
   };
 
   const handleDelete = async (id: string | number) => {
@@ -293,10 +258,7 @@ export default function SubscriptionsScreen() {
           ) : null}
           <Pressable
             style={styles.filterButton}
-            onPress={() => {
-              setDraftFilters(filters);
-              setFilterModalVisible(true);
-            }}
+            onPress={handleOpenFilters}
           >
             <Ionicons name="filter" size={16} color="#111827" />
             <Text style={styles.filterButtonText}>Filters</Text>
@@ -359,270 +321,6 @@ export default function SubscriptionsScreen() {
         </View>
       </View>
 
-      <Modal
-        visible={oneTimeModalVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => {
-          resetOneTimeForm();
-          setOneTimeModalVisible(false);
-        }}
-      >
-        <View style={styles.sheetBackdrop}>
-          <View style={styles.sheetCard}>
-            <Text style={styles.sheetTitle}>Add One-Time</Text>
-            <ScrollView contentContainerStyle={styles.sheetBody}>
-              <View style={styles.sheetField}>
-                <Text style={styles.sheetLabel}>Name</Text>
-                <TextInput
-                  value={oneTimeName}
-                  onChangeText={setOneTimeName}
-                  placeholder="e.g. Movie ticket"
-                  placeholderTextColor="#6b7280"
-                  style={styles.sheetInput}
-                />
-              </View>
-              <View style={styles.sheetField}>
-                <Text style={styles.sheetLabel}>Platform</Text>
-                <TextInput
-                  value={oneTimePlatform}
-                  onChangeText={setOneTimePlatform}
-                  placeholder="e.g. Apple TV"
-                  placeholderTextColor="#6b7280"
-                  style={styles.sheetInput}
-                />
-              </View>
-              <View style={styles.sheetField}>
-                <Text style={styles.sheetLabel}>Category</Text>
-                <View style={styles.chipRowWrap}>
-                  {categories.map((cat) => (
-                    <Pressable
-                      key={cat}
-                      onPress={() => setOneTimeCategory(cat)}
-                      style={[styles.filterChip, oneTimeCategory === cat && styles.filterChipActive]}
-                    >
-                      <Text style={[styles.filterChipText, oneTimeCategory === cat && styles.filterChipTextActive]}>{cat}</Text>
-                    </Pressable>
-                  ))}
-                </View>
-              </View>
-              <View style={styles.sheetField}>
-                <Text style={styles.sheetLabel}>Amount</Text>
-                <TextInput
-                  value={oneTimeAmount}
-                  onChangeText={setOneTimeAmount}
-                  placeholder="0.00"
-                  placeholderTextColor="#6b7280"
-                  keyboardType="decimal-pad"
-                  style={styles.sheetInput}
-                />
-              </View>
-              <View style={styles.sheetField}>
-                <Text style={styles.sheetLabel}>Date</Text>
-                <Pressable style={styles.sheetStatic} onPress={() => setShowOneTimeDatePicker(true)}>
-                  <Text style={styles.sheetStaticText}>{formatDate(oneTimeDate)}</Text>
-                </Pressable>
-                {showOneTimeDatePicker ? (
-                  <DateTimePicker
-                    value={oneTimeDate}
-                    mode="date"
-                    display="spinner"
-                    onChange={(event, date) => {
-                      if (event.type === 'dismissed') {
-                        setShowOneTimeDatePicker(false);
-                        return;
-                      }
-                      if (date) setOneTimeDate(date);
-                      setShowOneTimeDatePicker(false);
-                    }}
-                  />
-                ) : null}
-              </View>
-            </ScrollView>
-            <View style={styles.sheetActions}>
-              <Pressable
-                style={[styles.sheetButton, styles.sheetCancel]}
-                onPress={() => {
-                  resetOneTimeForm();
-                  setOneTimeModalVisible(false);
-                }}
-              >
-                <Text style={styles.sheetCancelText}>Cancel</Text>
-              </Pressable>
-              <Pressable
-                style={[styles.sheetButton, styles.sheetSave, oneTimeSubmitting && styles.submitDisabled]}
-                onPress={handleSaveOneTime}
-                disabled={oneTimeSubmitting}
-              >
-                <Text style={styles.sheetSaveText}>{oneTimeSubmitting ? 'Saving…' : 'Save'}</Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      <Modal
-        visible={filterModalVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setFilterModalVisible(false)}
-      >
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Filters</Text>
-            <ScrollView contentContainerStyle={styles.modalBody}>
-              <View style={styles.filterGroup}>
-                <Text style={styles.filterLabel}>Category</Text>
-                <View style={styles.chipRowWrap}>
-                  <Pressable
-                    style={[styles.filterChip, draftFilters.categories.length === 0 && styles.filterChipActive]}
-                    onPress={() => setDraftFilters((prev) => ({ ...prev, categories: [] }))}
-                  >
-                    <Text style={[styles.filterChipText, draftFilters.categories.length === 0 && styles.filterChipTextActive]}>All</Text>
-                  </Pressable>
-                  {categories.map((cat) => (
-                    <Pressable
-                      key={cat}
-                      style={[styles.filterChip, draftFilters.categories.includes(cat) && styles.filterChipActive]}
-                      onPress={() =>
-                        setDraftFilters((prev) => ({
-                          ...prev,
-                          categories: prev.categories.includes(cat)
-                            ? prev.categories.filter((c) => c !== cat)
-                            : [...prev.categories, cat],
-                        }))
-                      }
-                    >
-                      <Text style={[styles.filterChipText, draftFilters.categories.includes(cat) && styles.filterChipTextActive]}>{cat}</Text>
-                    </Pressable>
-                  ))}
-                </View>
-              </View>
-
-              <View style={styles.filterGroup}>
-                <Text style={styles.filterLabel}>Billing type</Text>
-                <View style={styles.chipRowWrap}>
-                  <Pressable
-                    style={[styles.filterChip, draftFilters.billingType === 'all' && styles.filterChipActive]}
-                    onPress={() => setDraftFilters((prev) => ({ ...prev, billingType: 'all' }))}
-                  >
-                    <Text style={[styles.filterChipText, draftFilters.billingType === 'all' && styles.filterChipTextActive]}>All</Text>
-                  </Pressable>
-                  {billingTypes.map((type) => (
-                    <Pressable
-                      key={type}
-                      style={[styles.filterChip, draftFilters.billingType === type && styles.filterChipActive]}
-                      onPress={() => setDraftFilters((prev) => ({ ...prev, billingType: type }))}
-                    >
-                      <Text style={[styles.filterChipText, draftFilters.billingType === type && styles.filterChipTextActive]}>{type}</Text>
-                    </Pressable>
-                  ))}
-                </View>
-              </View>
-
-              <View style={styles.filterGroup}>
-                <Text style={styles.filterLabel}>Status</Text>
-                <View style={styles.chipRowWrap}>
-                  <Pressable
-                    style={[styles.filterChip, draftFilters.status === 'all' && styles.filterChipActive]}
-                    onPress={() => setDraftFilters((prev) => ({ ...prev, status: 'all' }))}
-                  >
-                    <Text style={[styles.filterChipText, draftFilters.status === 'all' && styles.filterChipTextActive]}>All</Text>
-                  </Pressable>
-                  {statuses.map((stat) => (
-                    <Pressable
-                      key={stat}
-                      style={[styles.filterChip, draftFilters.status === stat && styles.filterChipActive]}
-                      onPress={() => setDraftFilters((prev) => ({ ...prev, status: stat }))}
-                    >
-                      <Text style={[styles.filterChipText, draftFilters.status === stat && styles.filterChipTextActive]}>
-                        {stat === 'active' ? 'Active' : 'Wishlist'}
-                      </Text>
-                    </Pressable>
-                  ))}
-                </View>
-              </View>
-
-              <View style={styles.filterGroup}>
-                <Text style={styles.filterLabel}>Access Type</Text>
-                <View style={styles.chipRowWrap}>
-                  <Pressable
-                    style={[styles.filterChip, draftFilters.accessType === 'all' && styles.filterChipActive]}
-                    onPress={() => setDraftFilters((prev) => ({ ...prev, accessType: 'all' }))}
-                  >
-                    <Text style={[styles.filterChipText, draftFilters.accessType === 'all' && styles.filterChipTextActive]}>All</Text>
-                  </Pressable>
-                  <Pressable
-                    style={[styles.filterChip, draftFilters.accessType === 'owned' && styles.filterChipActive]}
-                    onPress={() => setDraftFilters((prev) => ({ ...prev, accessType: 'owned' }))}
-                  >
-                    <Text style={[styles.filterChipText, draftFilters.accessType === 'owned' && styles.filterChipTextActive]}>Owned</Text>
-                  </Pressable>
-                  <Pressable
-                    style={[styles.filterChip, draftFilters.accessType === 'shared' && styles.filterChipActive]}
-                    onPress={() => setDraftFilters((prev) => ({ ...prev, accessType: 'shared' }))}
-                  >
-                    <Text style={[styles.filterChipText, draftFilters.accessType === 'shared' && styles.filterChipTextActive]}>Shared</Text>
-                  </Pressable>
-                </View>
-              </View>
-
-              <View style={styles.filterGroup}>
-                <Text style={styles.filterLabel}>Linked account</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalChips}>
-                  <Pressable
-                    style={[styles.filterChip, draftFilters.credential === 'all' && styles.filterChipActive]}
-                    onPress={() => setDraftFilters((prev) => ({ ...prev, credential: 'all' }))}
-                  >
-                    <Text style={[styles.filterChipText, draftFilters.credential === 'all' && styles.filterChipTextActive]}>All</Text>
-                  </Pressable>
-                  <Pressable
-                    style={[styles.filterChip, draftFilters.credential === 'none' && styles.filterChipActive]}
-                    onPress={() => setDraftFilters((prev) => ({ ...prev, credential: 'none' }))}
-                  >
-                    <Text style={[styles.filterChipText, draftFilters.credential === 'none' && styles.filterChipTextActive]}>None</Text>
-                  </Pressable>
-                  {credentials.map((cred) => (
-                    <Pressable
-                      key={cred.id}
-                      style={[styles.filterChip, draftFilters.credential === cred.id && styles.filterChipActive]}
-                      onPress={() => setDraftFilters((prev) => ({ ...prev, credential: cred.id }))}
-                    >
-                      <Text
-                        style={[styles.filterChipText, draftFilters.credential === cred.id && styles.filterChipTextActive]}
-                        numberOfLines={1}
-                      >
-                        {cred.label}
-                      </Text>
-                    </Pressable>
-                  ))}
-                </ScrollView>
-              </View>
-            </ScrollView>
-            <View style={styles.pickerActions}>
-              <Pressable
-                style={[styles.pickerButton, styles.clearButton]}
-                onPress={() => {
-                  setFilters(defaultFilters);
-                  setDraftFilters(defaultFilters);
-                  setFilterModalVisible(false);
-                }}
-              >
-                <Text style={styles.clearText}>Clear Filters</Text>
-              </Pressable>
-              <Pressable
-                style={[styles.pickerButton, styles.closeButton]}
-                onPress={() => {
-                  setFilters(draftFilters);
-                  setFilterModalVisible(false);
-                }}
-              >
-                <Text style={styles.closeText}>Apply Filters</Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      </Modal>
     </SafeAreaView>
   );
 }

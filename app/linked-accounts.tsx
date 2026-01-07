@@ -159,9 +159,9 @@ export default function LinkedAccountsScreen() {
         </View>
       </ScrollView>
 
-      <Modal visible={modalVisible} animationType="slide" transparent onRequestClose={closeModal}>
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
+      <Modal visible={modalVisible} transparent animationType="fade" onRequestClose={closeModal}>
+        <Pressable style={styles.modalBackdrop} onPress={closeModal}>
+          <Pressable style={styles.modalCard} onPress={(e) => e.stopPropagation()}>
             <Text style={styles.modalTitle}>{editing?.label ?? 'Credential'}</Text>
             {editing?.type === 'custom' ? (
               <View style={styles.modalGroup}>
@@ -206,8 +206,8 @@ export default function LinkedAccountsScreen() {
                 </Pressable>
               </View>
             </View>
-          </View>
-        </View>
+          </Pressable>
+        </Pressable>
       </Modal>
     </SafeAreaView>
   );

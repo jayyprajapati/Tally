@@ -38,6 +38,8 @@ export default function RootLayout() {
         <Stack>
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="add-subscription" options={{ title: 'Add Subscription', presentation: 'modal' }} />
+          <Stack.Screen name="add-onetime" options={{ title: 'Add One-Time', presentation: 'modal' }} />
+          <Stack.Screen name="subscription-filters" options={{ title: 'Filters', presentation: 'modal' }} />
           <Stack.Screen name="linked-accounts" options={{ title: 'Linked Accounts' }} />
           <Stack.Screen name="linked-cards" options={{ title: 'Linked Cards' }} />
         </Stack>
