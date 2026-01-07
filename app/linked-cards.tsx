@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import CredentialReveal from '@/components/credential-reveal';
 import { Credential, deleteCredential, getAllCredentials, maskCredentialValue, upsertCredential } from '@/lib/db/credentials';
+import { colors, spacing, typography } from '@/theme';
 
 type EditingCard = {
   id: string;
@@ -95,7 +96,7 @@ export default function LinkedCardsScreen() {
         </View>
         <CredentialReveal value={item.value} maskedValue={maskCredentialValue(item)} textStyle={styles.rowValue} />
         <Pressable style={styles.iconButton} onPress={() => openModal(item)}>
-          <Ionicons name="pencil" size={18} color="#111827" />
+          <Ionicons name="pencil" size={18} color={colors.textPrimary} />
         </Pressable>
       </View>
     );
@@ -118,7 +119,7 @@ export default function LinkedCardsScreen() {
             <Text style={styles.empty}>No cards saved yet.</Text>
           )}
           <Pressable style={styles.addButton} onPress={() => openModal()}>
-            <Ionicons name="add" size={18} color="#111827" />
+            <Ionicons name="add" size={18} color={colors.textPrimary} />
             <Text style={styles.addButtonText}>Add card</Text>
           </Pressable>
         </View>
@@ -134,7 +135,7 @@ export default function LinkedCardsScreen() {
                 value={name}
                 onChangeText={setName}
                 placeholder="e.g. Personal Visa"
-                placeholderTextColor="#6b7280"
+                placeholderTextColor={colors.textMuted}
                 style={styles.modalInput}
               />
             </View>
@@ -144,7 +145,7 @@ export default function LinkedCardsScreen() {
                 value={lastFour}
                 onChangeText={setLastFour}
                 placeholder="1234"
-                placeholderTextColor="#6b7280"
+                placeholderTextColor={colors.textMuted}
                 keyboardType="number-pad"
                 maxLength={4}
                 style={styles.modalInput}
@@ -175,31 +176,30 @@ export default function LinkedCardsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8f8f8',
+    backgroundColor: colors.backgroundSecondary,
   },
   scroll: {
-    padding: 16,
-    gap: 12,
+    padding: spacing.lg,
+    gap: spacing.md,
   },
   title: {
-    fontSize: 24,
-    fontWeight: '800',
-    marginBottom: 4,
-    color: '#0f172a',
+    ...typography.pageTitle,
+    marginBottom: spacing.xs,
+    color: colors.textPrimary,
   },
   section: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 12,
+    backgroundColor: colors.backgroundPrimary,
+    borderRadius: spacing.md,
+    padding: spacing.md,
     borderWidth: 1,
-    borderColor: '#e5e7eb',
-    gap: 10,
+    borderColor: colors.borderSubtle,
+    gap: spacing.sm,
   },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 10,
-    gap: 8,
+    paddingVertical: spacing.sm,
+    gap: spacing.sm,
   },
   labelBlock: {
     flex: 1,
@@ -208,120 +208,120 @@ const styles = StyleSheet.create({
   rowLabel: {
     fontSize: 15,
     fontWeight: '700',
-    color: '#111827',
+    color: colors.textPrimary,
   },
   rowSub: {
-    fontSize: 13,
-    color: '#6b7280',
+    ...typography.caption,
+    color: colors.textMuted,
   },
   rowValue: {
-    color: '#111827',
-    fontSize: 14,
+    color: colors.textPrimary,
+    fontSize: typography.body.fontSize,
   },
   iconButton: {
     width: 38,
     height: 38,
-    borderRadius: 12,
+    borderRadius: spacing.md,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#f3f4f6',
-    marginLeft: 4,
+    backgroundColor: colors.backgroundSecondary,
+    marginLeft: spacing.xs,
   },
   separator: {
     height: 1,
-    backgroundColor: '#e5e7eb',
+    backgroundColor: colors.borderSubtle,
   },
   addButton: {
-    marginTop: 4,
-    paddingVertical: 12,
-    borderRadius: 10,
+    marginTop: spacing.xs,
+    paddingVertical: spacing.md,
+    borderRadius: spacing.sm,
     borderWidth: 1,
-    borderColor: '#e5e7eb',
+    borderColor: colors.borderSubtle,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
+    gap: spacing.sm,
   },
   addButtonText: {
-    fontSize: 14,
+    fontSize: typography.body.fontSize,
     fontWeight: '700',
-    color: '#111827',
+    color: colors.textPrimary,
   },
   empty: {
     textAlign: 'center',
-    color: '#6b7280',
-    marginVertical: 8,
+    color: colors.textMuted,
+    marginVertical: spacing.sm,
   },
   modalBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.35)',
+    backgroundColor: colors.modalBackdrop,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 20,
+    padding: spacing.xl,
   },
   modalCard: {
     width: '100%',
-    backgroundColor: '#fff',
-    borderRadius: 14,
-    padding: 16,
+    backgroundColor: colors.backgroundPrimary,
+    borderRadius: spacing.md,
+    padding: spacing.lg,
     borderWidth: 1,
-    borderColor: '#e5e7eb',
-    gap: 10,
+    borderColor: colors.borderSubtle,
+    gap: spacing.sm,
   },
   modalTitle: {
-    fontSize: 18,
+    ...typography.sectionTitle,
     fontWeight: '800',
   },
   modalGroup: {
-    gap: 6,
+    gap: spacing.sm,
   },
   modalLabel: {
-    fontSize: 13,
-    color: '#6b7280',
+    ...typography.caption,
+    color: colors.textMuted,
   },
   modalInput: {
     borderWidth: 1,
-    borderColor: '#e5e7eb',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    borderColor: colors.borderSubtle,
+    borderRadius: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
     fontSize: 15,
-    backgroundColor: '#fff',
+    backgroundColor: colors.backgroundPrimary,
   },
   modalActions: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 8,
+    gap: spacing.sm,
   },
   actionsRight: {
     flexDirection: 'row',
-    gap: 8,
+    gap: spacing.sm,
   },
   modalButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 10,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: spacing.sm,
   },
   cancelButton: {
-    backgroundColor: '#f3f4f6',
+    backgroundColor: colors.backgroundSecondary,
   },
   cancelText: {
-    color: '#111827',
+    color: colors.textPrimary,
     fontWeight: '700',
   },
   saveButton: {
-    backgroundColor: '#111827',
+    backgroundColor: colors.textPrimary,
   },
   saveText: {
-    color: '#fff',
+    color: colors.backgroundPrimary,
     fontWeight: '700',
   },
   deleteButton: {
-    backgroundColor: '#fef2f2',
+    backgroundColor: colors.backgroundSecondary,
   },
   deleteText: {
-    color: '#b91c1c',
+    color: colors.accentPrimary,
     fontWeight: '700',
   },
 });

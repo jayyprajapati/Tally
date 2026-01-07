@@ -6,14 +6,15 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import CredentialReveal from '@/components/credential-reveal';
 import {
-    BUILT_IN_CREDENTIAL_IDS,
-    Credential,
-    CredentialType,
-    deleteCredential,
-    getAllCredentials,
-    maskCredentialValue,
-    upsertCredential,
+  BUILT_IN_CREDENTIAL_IDS,
+  Credential,
+  CredentialType,
+  deleteCredential,
+  getAllCredentials,
+  maskCredentialValue,
+  upsertCredential,
 } from '@/lib/db/credentials';
+import { colors, spacing, typography } from '@/theme';
 
 type CredentialRow = {
   id: string;
@@ -132,7 +133,7 @@ export default function LinkedAccountsScreen() {
           <CredentialReveal value={value} maskedValue={masked} textStyle={styles.rowValue} disabled={!value} />
         </View>
         <Pressable style={styles.iconButton} onPress={() => openModal({ ...item, label: displayLabel })}>
-          <Ionicons name="pencil" size={18} color="#111827" />
+          <Ionicons name="pencil" size={18} color={colors.textPrimary} />
         </Pressable>
       </View>
     );
@@ -149,10 +150,10 @@ export default function LinkedAccountsScreen() {
             keyExtractor={(item) => item.id}
             scrollEnabled={false}
             ItemSeparatorComponent={() => <View style={styles.separator} />}
-            ListFooterComponent={<View style={{ height: 12 }} />}
+            ListFooterComponent={<View style={{ height: spacing.md }} />}
           />
           <Pressable style={styles.addButton} onPress={handleAddCustom}>
-            <Ionicons name="add" size={18} color="#111827" />
+            <Ionicons name="add" size={18} color={colors.textPrimary} />
             <Text style={styles.addButtonText}>Add custom credential</Text>
           </Pressable>
         </View>
@@ -169,7 +170,7 @@ export default function LinkedAccountsScreen() {
                   value={inputLabel}
                   onChangeText={setInputLabel}
                   placeholder="e.g. Bank Login"
-                  placeholderTextColor="#6b7280"
+                  placeholderTextColor={colors.textMuted}
                   style={styles.modalInput}
                 />
               </View>
@@ -183,7 +184,7 @@ export default function LinkedAccountsScreen() {
                 value={inputValue}
                 onChangeText={setInputValue}
                 placeholder={editing?.type === 'mobileNumber' ? 'e.g. +1 555 123 4567' : 'Enter value'}
-                placeholderTextColor="#6b7280"
+                placeholderTextColor={colors.textMuted}
                 keyboardType={editing?.type === 'mobileNumber' ? 'phone-pad' : 'default'}
                 autoCapitalize={editing?.type === 'mobileNumber' ? 'none' : 'none'}
                 style={styles.modalInput}
@@ -215,29 +216,28 @@ export default function LinkedAccountsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8f8f8',
+    backgroundColor: colors.backgroundSecondary,
   },
   scroll: {
-    padding: 16,
-    gap: 12,
+    padding: spacing.lg,
+    gap: spacing.md,
   },
   title: {
-    fontSize: 24,
-    fontWeight: '800',
-    marginBottom: 4,
-    color: '#0f172a',
+    ...typography.pageTitle,
+    marginBottom: spacing.xs,
+    color: colors.textPrimary,
   },
   section: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 12,
+    backgroundColor: colors.backgroundPrimary,
+    borderRadius: spacing.md,
+    padding: spacing.md,
     borderWidth: 1,
-    borderColor: '#e5e7eb',
+    borderColor: colors.borderSubtle,
   },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 10,
+    paddingVertical: spacing.sm,
   },
   labelBlock: {
     flex: 1,
@@ -249,112 +249,112 @@ const styles = StyleSheet.create({
   rowLabel: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#111827',
+    color: colors.textPrimary,
   },
   rowValue: {
-    color: '#111827',
-    fontSize: 14,
+    color: colors.textPrimary,
+    fontSize: typography.body.fontSize,
   },
   iconButton: {
     width: 38,
     height: 38,
-    borderRadius: 12,
+    borderRadius: spacing.md,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#f3f4f6',
-    marginLeft: 8,
+    backgroundColor: colors.backgroundSecondary,
+    marginLeft: spacing.sm,
   },
   separator: {
     height: 1,
-    backgroundColor: '#e5e7eb',
+    backgroundColor: colors.borderSubtle,
   },
   addButton: {
-    marginTop: 8,
-    paddingVertical: 12,
-    borderRadius: 10,
+    marginTop: spacing.sm,
+    paddingVertical: spacing.md,
+    borderRadius: spacing.sm,
     borderWidth: 1,
-    borderColor: '#e5e7eb',
+    borderColor: colors.borderSubtle,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
+    gap: spacing.sm,
   },
   addButtonText: {
-    fontSize: 14,
+    fontSize: typography.body.fontSize,
     fontWeight: '700',
-    color: '#111827',
+    color: colors.textPrimary,
   },
   modalBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.35)',
+    backgroundColor: colors.modalBackdrop,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 20,
+    padding: spacing.xl,
   },
   modalCard: {
     width: '100%',
-    backgroundColor: '#fff',
-    borderRadius: 14,
-    padding: 16,
+    backgroundColor: colors.backgroundPrimary,
+    borderRadius: spacing.md,
+    padding: spacing.lg,
     borderWidth: 1,
-    borderColor: '#e5e7eb',
+    borderColor: colors.borderSubtle,
   },
   modalTitle: {
-    fontSize: 18,
+    ...typography.sectionTitle,
     fontWeight: '800',
-    marginBottom: 12,
+    marginBottom: spacing.md,
   },
   modalGroup: {
-    marginBottom: 12,
+    marginBottom: spacing.md,
   },
   modalLabel: {
-    fontSize: 13,
-    color: '#6b7280',
-    marginBottom: 6,
+    ...typography.caption,
+    color: colors.textMuted,
+    marginBottom: spacing.sm,
   },
   modalInput: {
     borderWidth: 1,
-    borderColor: '#e5e7eb',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    borderColor: colors.borderSubtle,
+    borderRadius: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
     fontSize: 15,
-    backgroundColor: '#fff',
+    backgroundColor: colors.backgroundPrimary,
   },
   modalActions: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 8,
+    gap: spacing.sm,
   },
   actionsRight: {
     flexDirection: 'row',
-    gap: 8,
+    gap: spacing.sm,
   },
   modalButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 10,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: spacing.sm,
   },
   cancelButton: {
-    backgroundColor: '#f3f4f6',
+    backgroundColor: colors.backgroundSecondary,
   },
   cancelText: {
-    color: '#111827',
+    color: colors.textPrimary,
     fontWeight: '700',
   },
   saveButton: {
-    backgroundColor: '#111827',
+    backgroundColor: colors.textPrimary,
   },
   saveText: {
-    color: '#fff',
+    color: colors.backgroundPrimary,
     fontWeight: '700',
   },
   deleteButton: {
-    backgroundColor: '#fef2f2',
+    backgroundColor: colors.backgroundSecondary,
   },
   deleteText: {
-    color: '#b91c1c',
+    color: colors.accentPrimary,
     fontWeight: '700',
   },
 });

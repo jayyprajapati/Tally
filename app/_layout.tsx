@@ -6,9 +6,23 @@ import 'react-native-reanimated';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { initializeDatabase } from '@/lib/db/subscriptions';
+import { colors } from '@/theme';
 
 export const unstable_settings = {
   anchor: '(tabs)',
+};
+
+const LightTheme = {
+  ...DefaultTheme,
+  colors: {
+    ...DefaultTheme.colors,
+    primary: colors.accentPrimary,
+    background: colors.backgroundSecondary,
+    card: colors.backgroundPrimary,
+    text: colors.textPrimary,
+    border: colors.borderSubtle,
+    notification: colors.accentPrimary,
+  },
 };
 
 export default function RootLayout() {
@@ -20,7 +34,7 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider>
-      <ThemeProvider value={DefaultTheme}>
+      <ThemeProvider value={LightTheme}>
         <Stack>
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="add-subscription" options={{ title: 'Add Subscription', presentation: 'modal' }} />

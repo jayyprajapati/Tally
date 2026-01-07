@@ -4,6 +4,8 @@ import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { colors, spacing, typography } from '@/theme';
+
 export default function SettingsScreen() {
   const router = useRouter();
 
@@ -27,17 +29,17 @@ export default function SettingsScreen() {
       <View style={styles.listCard}>
         <Pressable style={styles.listRow} onPress={() => router.push('/linked-accounts')}>
           <View style={styles.rowLeft}>
-            <View style={styles.rowIcon}><Ionicons name="mail" size={18} color="#111827" /></View>
+            <View style={styles.rowIcon}><Ionicons name="mail" size={18} color={colors.textPrimary} /></View>
             <Text style={styles.rowLabel}>Linked Accounts</Text>
           </View>
-          <Ionicons name="chevron-forward" size={18} color="#6b7280" />
+          <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
         </Pressable>
         <Pressable style={styles.listRow} onPress={() => router.push('/linked-cards')}>
           <View style={styles.rowLeft}>
-            <View style={styles.rowIcon}><Ionicons name="card" size={18} color="#111827" /></View>
+            <View style={styles.rowIcon}><Ionicons name="card" size={18} color={colors.textPrimary} /></View>
             <Text style={styles.rowLabel}>Linked Cards</Text>
           </View>
-          <Ionicons name="chevron-forward" size={18} color="#6b7280" />
+          <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
         </Pressable>
       </View>
     </SafeAreaView>
@@ -47,24 +49,23 @@ export default function SettingsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 16,
-    backgroundColor: '#f8f8f8',
-    gap: 12,
+    padding: spacing.lg,
+    backgroundColor: colors.backgroundSecondary,
+    gap: spacing.md,
   },
   title: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: '#0f172a',
+    ...typography.pageTitle,
+    color: colors.textPrimary,
   },
   profileCard: {
-    backgroundColor: '#fff',
-    borderRadius: 14,
-    padding: 14,
+    backgroundColor: colors.backgroundPrimary,
+    borderRadius: spacing.md,
+    padding: spacing.md,
     borderWidth: 1,
-    borderColor: '#e5e7eb',
+    borderColor: colors.borderSubtle,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: spacing.md,
   },
   avatar: {
     width: 52,
@@ -72,66 +73,67 @@ const styles = StyleSheet.create({
     borderRadius: 26,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#111827',
+    backgroundColor: colors.textPrimary,
   },
   avatarText: {
-    color: '#fff',
+    color: colors.backgroundPrimary,
     fontWeight: '800',
-    fontSize: 18,
+    fontSize: typography.sectionTitle.fontSize,
   },
   username: {
-    fontSize: 18,
+    ...typography.sectionTitle,
     fontWeight: '800',
-    color: '#0f172a',
+    color: colors.textPrimary,
   },
   subtitle: {
-    fontSize: 13,
-    color: '#6b7280',
+    ...typography.caption,
+    color: colors.textMuted,
   },
   editPill: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: '#e5e7eb',
-    backgroundColor: '#f3f4f6',
+    borderColor: colors.borderSubtle,
+    backgroundColor: colors.backgroundSecondary,
   },
   editPillText: {
     fontWeight: '700',
-    color: '#111827',
+    color: colors.textPrimary,
+    fontSize: typography.body.fontSize,
   },
   listCard: {
-    backgroundColor: '#fff',
-    borderRadius: 14,
+    backgroundColor: colors.backgroundPrimary,
+    borderRadius: spacing.md,
     borderWidth: 1,
-    borderColor: '#e5e7eb',
+    borderColor: colors.borderSubtle,
     overflow: 'hidden',
   },
   listRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 14,
-    paddingVertical: 14,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
     borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
+    borderBottomColor: colors.borderSubtle,
   },
   rowLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: spacing.sm,
   },
   rowIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#f3f4f6',
+    width: spacing.xxl,
+    height: spacing.xxl,
+    borderRadius: spacing.lg,
+    backgroundColor: colors.backgroundSecondary,
     alignItems: 'center',
     justifyContent: 'center',
   },
   rowLabel: {
     fontSize: 15,
     fontWeight: '700',
-    color: '#0f172a',
+    color: colors.textPrimary,
   },
 });
