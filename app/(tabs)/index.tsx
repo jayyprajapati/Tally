@@ -20,23 +20,10 @@ import { OneTimeItem, getAllOneTimeItems } from '@/lib/db/onetime-items';
 import { Subscription, getAllSubscriptions } from '@/lib/db/subscriptions';
 import { colors, spacing, typography } from '@/theme';
 
-const hexToRgb = (hex: string): [number, number, number] => {
-  const sanitized = hex.replace('#', '');
-  const bigint = parseInt(sanitized, 16);
-  const r = (bigint >> 16) & 255;
-  const g = (bigint >> 8) & 255;
-  const b = bigint & 255;
-  return [r, g, b];
-};
+const charcoal = '#111827';
+const chartPalette = ['#6B8BC3', '#7BBFA3', '#D9C27A', '#D89A9E', '#B17BA6', '#9BA9C6', '#B0C7AA', '#C7A27B', '#C69DA6', '#A1B6CE'];
 
-const accentRgb = hexToRgb(colors.accentPrimary);
-
-const getSliceColor = (index: number) => {
-  const baseAlpha = 0.35 + index * 0.12;
-  const alpha = Math.max(0.25, Math.min(baseAlpha, 0.85));
-  const [r, g, b] = accentRgb;
-  return `rgba(${r}, ${g}, ${b}, ${alpha.toFixed(2)})`;
-};
+const getSliceColor = (index: number) => chartPalette[index % chartPalette.length];
 
 type Slice = {
   category: string;
@@ -85,9 +72,9 @@ const INACTIVE_MONTHS = 6;
 
 
 const DonutChart = ({ data, total, label }: { data: Slice[]; total: number; label: string }) => {
-  const size = 200;
+  const size = 150;
   const radius = size / 2 - 6;
-  const innerRadius = 60;
+  const innerRadius = 42;
 
   if (!data.length || total <= 0) {
     return (
@@ -106,21 +93,12 @@ const DonutChart = ({ data, total, label }: { data: Slice[]; total: number; labe
           <Circle cx={size / 2} cy={size / 2} r={innerRadius} fill={colors.backgroundPrimary} />
           <SvgText
             x={size / 2}
-            y={size / 2 - 4}
-            fontSize={12}
-            fontWeight="600"
+            y={size / 2 + 4}
+            fontSize={13}
+            fontWeight="700"
             fill={colors.textSecondary}
             textAnchor="middle">
             {label}
-          </SvgText>
-          <SvgText
-            x={size / 2}
-            y={size / 2 + 16}
-            fontSize={16}
-            fontWeight="800"
-            fill={colors.textPrimary}
-            textAnchor="middle">
-            {formatCurrency(total)}
           </SvgText>
         </Svg>
       </View>
@@ -242,6 +220,11 @@ export default function DashboardScreen() {
   const [selectedYear, setSelectedYear] = useState(currentYear);
   const [selectedMonth, setSelectedMonth] = useState(currentMonth);
 
+  const filteredSubscriptions = useMemo(
+    () => (includeWishlist ? subscriptions : subscriptions.filter((sub) => sub.status === 'active')),
+    [includeWishlist, subscriptions],
+  );
+
   const loadSubscriptions = useCallback(async () => {
     setLoading(true);
     try {
@@ -285,10 +268,6 @@ export default function DashboardScreen() {
   );
 
   const analytics = useMemo(() => {
-    const base = includeWishlist
-      ? subscriptions
-      : subscriptions.filter((sub) => sub.status === 'active');
-
     const oneTimeByYear = oneTimeItems.filter((item) => {
       const year = new Date(item.date).getFullYear();
       return year === selectedYear;
@@ -298,7 +277,7 @@ export default function DashboardScreen() {
       const categoryTotals: Record<string, number> = {};
       let totalSpend = 0;
 
-      base.forEach((sub) => {
+      filteredSubscriptions.forEach((sub) => {
         if (sub.billingType === 'lifetime') return;
         if (sub.userPaying === false) return;
 
@@ -318,11 +297,7 @@ export default function DashboardScreen() {
           const months = getMonthsInYear(sub.startDate, selectedYear, stop);
           spend = sub.amount * months;
         } else if (sub.billingType === 'yearly') {
-          const startYear = typeof sub.startDate === 'string' ? new Date(sub.startDate).getFullYear() : sub.startDate.getFullYear();
-          const stopYear = stop
-            ? (typeof stop === 'string' ? new Date(stop).getFullYear() : stop.getFullYear())
-            : undefined;
-          if (startYear === selectedYear && (stopYear === undefined || stopYear >= selectedYear)) {
+          if (isSubscriptionActiveInYear(sub.startDate, selectedYear, stop)) {
             spend = sub.amount;
           }
         }
@@ -354,7 +329,7 @@ export default function DashboardScreen() {
       const categoryTotals: Record<string, number> = {};
       let totalSpend = 0;
 
-      base.forEach((sub) => {
+      filteredSubscriptions.forEach((sub) => {
         if (sub.userPaying === false) return;
 
         if (sub.billingType === 'weekly') {
@@ -396,7 +371,7 @@ export default function DashboardScreen() {
       const categoryTotals: Record<string, number> = {};
       let totalSpend = 0;
 
-      base.forEach((sub) => {
+      filteredSubscriptions.forEach((sub) => {
         if (sub.userPaying === false) return;
         if (sub.billingType !== 'yearly') return;
 
@@ -418,7 +393,7 @@ export default function DashboardScreen() {
     }
 
     return { slices: [], total: 0 };
-  }, [activeTab, includeWishlist, oneTimeItems, selectedMonth, selectedYear, subscriptions]);
+  }, [activeTab, filteredSubscriptions, oneTimeItems, selectedMonth, selectedYear]);
 
   const credentialMap = useMemo(() => {
     const map: Record<string, Credential> = {};
@@ -440,7 +415,7 @@ export default function DashboardScreen() {
     const credentialUsage: Record<string, number> = {};
     const inactive: Subscription[] = [];
 
-    subscriptions.forEach((sub) => {
+    filteredSubscriptions.forEach((sub) => {
       const categoryKey = sub.category || 'Other';
       categoryCount[categoryKey] = (categoryCount[categoryKey] ?? 0) + 1;
       billingCount[sub.billingType] = (billingCount[sub.billingType] ?? 0) + 1;
@@ -470,7 +445,7 @@ export default function DashboardScreen() {
       .sort((a, b) => b.count - a.count);
 
     return { categoryCounts, billingCounts, reusedAccounts, inactive, inactivityThreshold: INACTIVE_MONTHS };
-  }, [credentialMap, subscriptions]);
+  }, [credentialMap, filteredSubscriptions]);
 
   const availableYears = useMemo(() => {
     const years = new Set<number>();
@@ -506,21 +481,30 @@ export default function DashboardScreen() {
   const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
   const getTabLabel = () => {
-    if (activeTab === 'overall') return `Overall Spend (${selectedYear})`;
-    if (activeTab === 'monthly') return `Monthly Spend (${monthNames[selectedMonth]} ${selectedYear})`;
-    if (activeTab === 'yearly') return `Yearly Spend (${selectedYear})`;
+    if (activeTab === 'overall') return 'Overall Spend';
+    if (activeTab === 'monthly') return 'Monthly Spend';
+    if (activeTab === 'yearly') return 'Yearly Spend';
+    return '';
+  };
+
+  const getTabSubtitle = () => {
+    if (activeTab === 'overall') {
+      return 'Total expected spend for the selected year, multiplying monthly charges by active months (start/stop aware), counting weekly occurrences, and allocating each yearly renewal to every active year.';
+    }
+    if (activeTab === 'monthly') {
+      return 'Month-specific spend including weekly charges that fall inside the month and monthly subscriptions active during that window.';
+    }
+    if (activeTab === 'yearly') {
+      return 'Annual renewals that occur in the selected year for subscriptions still active that year—one annual charge per active year.';
+    }
     return '';
   };
 
   const buildCategoryEntries = useCallback(
     (category: string) => {
-      const base = includeWishlist
-        ? subscriptions
-        : subscriptions.filter((sub) => sub.status === 'active');
-
       const entries: CategoryEntry[] = [];
 
-      base.forEach((sub) => {
+      filteredSubscriptions.forEach((sub) => {
         if (sub.category !== category) return;
         if (sub.billingType === 'lifetime') return;
         if (sub.userPaying === false) return;
@@ -544,11 +528,7 @@ export default function DashboardScreen() {
               entries.push({ type: 'subscription', item: sub, contribution: sub.amount * months });
             }
           } else if (sub.billingType === 'yearly') {
-            const startYear = typeof sub.startDate === 'string' ? new Date(sub.startDate).getFullYear() : sub.startDate.getFullYear();
-            const stopYear = stop
-              ? (typeof stop === 'string' ? new Date(stop).getFullYear() : stop.getFullYear())
-              : undefined;
-            if (startYear === selectedYear && (stopYear === undefined || stopYear >= selectedYear)) {
+            if (isSubscriptionActiveInYear(sub.startDate, selectedYear, stop)) {
               entries.push({ type: 'subscription', item: sub, contribution: sub.amount });
             }
           }
@@ -594,7 +574,7 @@ export default function DashboardScreen() {
 
       return entries;
     },
-    [activeTab, includeWishlist, oneTimeItems, selectedMonth, selectedYear, subscriptions],
+    [activeTab, filteredSubscriptions, oneTimeItems, selectedMonth, selectedYear],
   );
 
   return (
@@ -603,41 +583,29 @@ export default function DashboardScreen() {
         contentContainerStyle={styles.container}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
-        <Text style={styles.title}>Dashboard</Text>
+        <Text style={styles.title}>DASHBOARD</Text>
 
         <View style={styles.tabRow}>
-          <TouchableOpacity
-            style={[styles.tab, activeTab === 'overall' && styles.tabActive]}
-            onPress={() => setActiveTab('overall')}
-          >
-            <Text style={[styles.tabText, activeTab === 'overall' && styles.tabTextActive]}>
-              Overall
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.tab, activeTab === 'monthly' && styles.tabActive]}
-            onPress={() => setActiveTab('monthly')}
-          >
-            <Text style={[styles.tabText, activeTab === 'monthly' && styles.tabTextActive]}>
-              Monthly
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.tab, activeTab === 'yearly' && styles.tabActive]}
-            onPress={() => setActiveTab('yearly')}
-          >
-            <Text style={[styles.tabText, activeTab === 'yearly' && styles.tabTextActive]}>
-              Yearly
-            </Text>
-          </TouchableOpacity>
+          {(['overall', 'monthly', 'yearly'] as SpendTab[]).map((tab) => (
+            <TouchableOpacity
+              key={tab}
+              style={[styles.tab, activeTab === tab && styles.tabActive]}
+              onPress={() => setActiveTab(tab)}
+            >
+              <Text style={[styles.tabText, activeTab === tab && styles.tabTextActive]}>
+                {tab === 'overall' ? 'Overall' : tab === 'monthly' ? 'Monthly' : 'Yearly'}
+              </Text>
+            </TouchableOpacity>
+          ))}
         </View>
+        <Text style={styles.tabSubtitle}>{getTabSubtitle()}</Text>
 
         <View style={styles.wishlistRow}>
-          <Text style={styles.wishlistLabel}>Include Wishlist in Analytics</Text>
+          <Text style={styles.wishlistLabel}>Include wishlist in analytics</Text>
           <Switch
             value={includeWishlist}
             onValueChange={setIncludeWishlist}
-            trackColor={{ false: colors.borderSubtle, true: colors.accentPrimary }}
+            trackColor={{ false: colors.borderSubtle, true: charcoal }}
             thumbColor={colors.backgroundPrimary}
             ios_backgroundColor={colors.borderSubtle}
           />
@@ -655,49 +623,49 @@ export default function DashboardScreen() {
             ) : null}
             <View style={styles.headerRow}>
               <Text style={styles.sectionTitle}>{getTabLabel()}</Text>
-              {activeTab === 'overall' ? (
-                <View style={styles.selectorRow}>
+              <View style={styles.selectorRow}>
+                {activeTab === 'overall' ? (
                   <Pressable style={styles.selectorField} onPress={() => setOverallYearModalVisible(true)}>
-                    <Text style={styles.selectorLabel}>Year</Text>
                     <Text style={styles.selectorValue}>{selectedYear}</Text>
                   </Pressable>
-                </View>
-              ) : null}
-              {activeTab === 'monthly' ? (
-                <View style={styles.selectorRow}>
+                ) : null}
+                {activeTab === 'monthly' ? (
                   <Pressable style={styles.selectorField} onPress={() => setMonthlyMonthModalVisible(true)}>
-                    <Text style={styles.selectorLabel}>Month</Text>
-                    <Text style={styles.selectorValue}>{monthNames[selectedMonth]}</Text>
+                    <Text style={styles.selectorValue}>{monthNames[selectedMonth]} {selectedYear}</Text>
                   </Pressable>
-                </View>
-              ) : null}
-              {activeTab === 'yearly' ? (
-                <View style={styles.selectorRow}>
+                ) : null}
+                {activeTab === 'yearly' ? (
                   <Pressable style={styles.selectorField} onPress={() => setYearlyYearModalVisible(true)}>
-                    <Text style={styles.selectorLabel}>Year</Text>
                     <Text style={styles.selectorValue}>{selectedYear}</Text>
                   </Pressable>
-                </View>
-              ) : null}
+                ) : null}
+              </View>
             </View>
 
             <Text style={styles.totalAmount}>{formatCurrency(analytics.total)}</Text>
 
             {analytics.slices.length > 0 ? (
               <View style={styles.chartSection}>
-                <DonutChart data={analytics.slices} total={analytics.total} label="Spend" />
+                <View style={styles.chartColumn}>
+                  <DonutChart data={analytics.slices} total={analytics.total} label="Spend" />
+                </View>
                 <View style={styles.legend}>
-                  {analytics.slices.map((slice) => (
-                    <Pressable
-                      key={slice.category}
-                      style={styles.legendRow}
-                      onPress={() => setCategoryModal({ category: slice.category, entries: buildCategoryEntries(slice.category) })}
-                    >
-                      <View style={[styles.legendSwatch, { backgroundColor: slice.color }]} />
-                      <Text style={styles.legendLabel}>{slice.category}</Text>
-                      <Text style={styles.legendValue}>{formatCurrency(slice.value)}</Text>
-                    </Pressable>
-                  ))}
+                  {analytics.slices.map((slice) => {
+                    const share = analytics.total ? (slice.value / analytics.total) * 100 : 0;
+                    return (
+                      <Pressable
+                        key={slice.category}
+                        style={styles.legendRow}
+                        onPress={() => setCategoryModal({ category: slice.category, entries: buildCategoryEntries(slice.category) })}
+                      >
+                        <View style={[styles.legendSwatch, { backgroundColor: slice.color }]} />
+                        <View style={styles.legendTextBlock}>
+                          <Text style={styles.legendLabel}>{slice.category}</Text>
+                          <Text style={styles.legendMeta}>{`${formatCurrency(slice.value)} · ${share.toFixed(1)}% of spend`}</Text>
+                        </View>
+                      </Pressable>
+                    );
+                  })}
                 </View>
               </View>
             ) : (
@@ -710,61 +678,63 @@ export default function DashboardScreen() {
               <Text style={styles.sectionTitle}>Insights</Text>
               <Text style={styles.insightSubtitle}>Read-only counts based on current subscriptions.</Text>
 
-              <View style={styles.insightCard}>
-                <Text style={styles.insightTitle}>By category</Text>
-                {insights.categoryCounts.length ? (
-                  insights.categoryCounts.map((entry) => (
+              <View style={styles.insightGrid}>
+                <View style={styles.insightTile}>
+                  <Text style={styles.insightTitle}>By category</Text>
+                  {insights.categoryCounts.length ? (
+                    insights.categoryCounts.map((entry) => (
+                      <View key={entry.label} style={styles.insightRow}>
+                        <Text style={styles.insightLabel}>{entry.label}</Text>
+                        <Text style={styles.insightValue}>{entry.count}</Text>
+                      </View>
+                    ))
+                  ) : (
+                    <Text style={styles.insightEmpty}>No categories tracked yet.</Text>
+                  )}
+                </View>
+
+                <View style={styles.insightTile}>
+                  <Text style={styles.insightTitle}>By billing type</Text>
+                  {insights.billingCounts.map((entry) => (
                     <View key={entry.label} style={styles.insightRow}>
                       <Text style={styles.insightLabel}>{entry.label}</Text>
                       <Text style={styles.insightValue}>{entry.count}</Text>
                     </View>
-                  ))
-                ) : (
-                  <Text style={styles.insightEmpty}>No categories tracked yet.</Text>
-                )}
-              </View>
+                  ))}
+                </View>
 
-              <View style={styles.insightCard}>
-                <Text style={styles.insightTitle}>By billing type</Text>
-                {insights.billingCounts.map((entry) => (
-                  <View key={entry.label} style={styles.insightRow}>
-                    <Text style={styles.insightLabel}>{entry.label}</Text>
-                    <Text style={styles.insightValue}>{entry.count}</Text>
-                  </View>
-                ))}
-              </View>
-
-              <View style={styles.insightCard}>
-                <Text style={styles.insightTitle}>Credential reuse</Text>
-                {insights.reusedAccounts.length ? (
-                  insights.reusedAccounts.map((entry) => (
-                    <View key={entry.id} style={styles.insightRow}>
-                      <Text style={styles.insightLabel}>{entry.label}</Text>
-                      <Text style={styles.insightValue}>{entry.count} use{entry.count === 1 ? '' : 's'}</Text>
-                    </View>
-                  ))
-                ) : (
-                  <Text style={styles.insightEmpty}>No linked accounts reused by multiple subscriptions.</Text>
-                )}
-                <Text style={styles.insightNote}>Shows accounts linked to more than one subscription.</Text>
-              </View>
-
-              <View style={styles.insightCard}>
-                <Text style={styles.insightTitle}>Inactive entries</Text>
-                <Text style={styles.insightNote}>Not edited in the last {insights.inactivityThreshold} months (using last start date).</Text>
-                {insights.inactive.length ? (
-                  insights.inactive.map((sub) => (
-                    <View key={sub.id} style={styles.insightRow}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.insightLabel}>{sub.name}</Text>
-                        <Text style={styles.insightSubtext}>{sub.billingType} • {sub.status}</Text>
+                <View style={styles.insightTile}>
+                  <Text style={styles.insightTitle}>Credential reuse</Text>
+                  {insights.reusedAccounts.length ? (
+                    insights.reusedAccounts.map((entry) => (
+                      <View key={entry.id} style={styles.insightRow}>
+                        <Text style={styles.insightLabel}>{entry.label}</Text>
+                        <Text style={styles.insightValue}>{entry.count} use{entry.count === 1 ? '' : 's'}</Text>
                       </View>
-                      <Text style={styles.insightValue}>{new Date(sub.startDate).toISOString().slice(0, 10)}</Text>
-                    </View>
-                  ))
-                ) : (
-                  <Text style={styles.insightEmpty}>All subscriptions have recent edits.</Text>
-                )}
+                    ))
+                  ) : (
+                    <Text style={styles.insightEmpty}>No linked accounts reused by multiple subscriptions.</Text>
+                  )}
+                  <Text style={styles.insightNote}>Shows accounts linked to more than one subscription.</Text>
+                </View>
+
+                <View style={styles.insightTile}>
+                  <Text style={styles.insightTitle}>Inactive entries</Text>
+                  <Text style={styles.insightNote}>Not edited in the last {insights.inactivityThreshold} months (using last start date).</Text>
+                  {insights.inactive.length ? (
+                    insights.inactive.map((sub) => (
+                      <View key={sub.id} style={styles.insightRow}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.insightLabel}>{sub.name}</Text>
+                          <Text style={styles.insightSubtext}>{sub.billingType} • {sub.status}</Text>
+                        </View>
+                        <Text style={styles.insightValue}>{new Date(sub.startDate).toISOString().slice(0, 10)}</Text>
+                      </View>
+                    ))
+                  ) : (
+                    <Text style={styles.insightEmpty}>All subscriptions have recent edits.</Text>
+                  )}
+                </View>
               </View>
             </View>
           </>
@@ -774,17 +744,18 @@ export default function DashboardScreen() {
       <Modal
         visible={overallYearModalVisible && activeTab === 'overall'}
         transparent
-        animationType="fade"
+        animationType="none"
         onRequestClose={() => setOverallYearModalVisible(false)}
       >
-        <Pressable style={styles.modalBackdrop} onPress={() => setOverallYearModalVisible(false)}>
-          <Pressable style={styles.selectorModalCard} onPress={(e) => e.stopPropagation()}>
+        <Pressable style={styles.sheetBackdrop} onPress={() => setOverallYearModalVisible(false)}>
+          <Pressable style={styles.bottomSheet} onPress={(e) => e.stopPropagation()}>
+            <View style={styles.sheetHandle} />
             <Text style={styles.modalTitle}>Select Year</Text>
             <View style={styles.modalOptionsList}>
               {availableYears.map((year) => (
                 <Pressable
                   key={year}
-                  style={styles.modalOption}
+                  style={[styles.modalOption, selectedYear === year && styles.modalOptionActive]}
                   onPress={() => {
                     setSelectedYear(year);
                     setOverallYearModalVisible(false);
@@ -801,17 +772,18 @@ export default function DashboardScreen() {
       <Modal
         visible={monthlyMonthModalVisible && activeTab === 'monthly'}
         transparent
-        animationType="fade"
+        animationType="none"
         onRequestClose={() => setMonthlyMonthModalVisible(false)}
       >
-        <Pressable style={styles.modalBackdrop} onPress={() => setMonthlyMonthModalVisible(false)}>
-          <Pressable style={styles.selectorModalCard} onPress={(e) => e.stopPropagation()}>
+        <Pressable style={styles.sheetBackdrop} onPress={() => setMonthlyMonthModalVisible(false)}>
+          <Pressable style={styles.bottomSheet} onPress={(e) => e.stopPropagation()}>
+            <View style={styles.sheetHandle} />
             <Text style={styles.modalTitle}>Select Month</Text>
             <View style={styles.modalOptionsList}>
               {monthNames.map((name, idx) => (
                 <Pressable
                   key={name}
-                  style={styles.modalOption}
+                  style={[styles.modalOption, selectedMonth === idx && styles.modalOptionActive]}
                   onPress={() => {
                     setSelectedMonth(idx);
                     setMonthlyMonthModalVisible(false);
@@ -828,17 +800,18 @@ export default function DashboardScreen() {
       <Modal
         visible={yearlyYearModalVisible && activeTab === 'yearly'}
         transparent
-        animationType="fade"
+        animationType="none"
         onRequestClose={() => setYearlyYearModalVisible(false)}
       >
-        <Pressable style={styles.modalBackdrop} onPress={() => setYearlyYearModalVisible(false)}>
-          <Pressable style={styles.selectorModalCard} onPress={(e) => e.stopPropagation()}>
+        <Pressable style={styles.sheetBackdrop} onPress={() => setYearlyYearModalVisible(false)}>
+          <Pressable style={styles.bottomSheet} onPress={(e) => e.stopPropagation()}>
+            <View style={styles.sheetHandle} />
             <Text style={styles.modalTitle}>Select Year</Text>
             <View style={styles.modalOptionsList}>
               {availableYears.map((year) => (
                 <Pressable
                   key={year}
-                  style={styles.modalOption}
+                  style={[styles.modalOption, selectedYear === year && styles.modalOptionActive]}
                   onPress={() => {
                     setSelectedYear(year);
                     setYearlyYearModalVisible(false);
@@ -855,11 +828,12 @@ export default function DashboardScreen() {
       <Modal
         visible={!!categoryModal}
         transparent
-        animationType="slide"
+        animationType="none"
         onRequestClose={() => setCategoryModal(null)}
       >
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
+        <Pressable style={styles.sheetBackdrop} onPress={() => setCategoryModal(null)}>
+          <Pressable style={styles.bottomSheet} onPress={(e) => e.stopPropagation()}>
+            <View style={styles.sheetHandle} />
             <Text style={styles.modalTitle}>{categoryModal?.category ?? ''}</Text>
             <Text style={styles.modalSubtitle}>Items contributing to this category</Text>
             <ScrollView style={styles.modalList}>
@@ -885,8 +859,8 @@ export default function DashboardScreen() {
             <Pressable style={styles.modalCloseButton} onPress={() => setCategoryModal(null)}>
               <Text style={styles.modalCloseText}>Close</Text>
             </Pressable>
-          </View>
-        </View>
+          </Pressable>
+        </Pressable>
       </Modal>
     </SafeAreaView>
   );
@@ -903,35 +877,49 @@ const styles = StyleSheet.create({
   },
   title: {
     ...typography.pageTitle,
+    fontSize: 34,
+    fontWeight: '900',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
     color: colors.textPrimary,
-    marginBottom: spacing.xl,
+    marginBottom: spacing.lg,
   },
   tabRow: {
     flexDirection: 'row',
     gap: spacing.sm,
-    marginBottom: spacing.xl,
+    marginBottom: spacing.sm,
+    backgroundColor: '#F4F6FA',
+    borderRadius: spacing.lg,
+    padding: spacing.xs,
   },
   tab: {
     flex: 1,
     paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.lg,
-    borderRadius: spacing.sm,
-    backgroundColor: colors.backgroundPrimary,
+    paddingHorizontal: spacing.md,
+    borderRadius: 999,
+    backgroundColor: 'transparent',
     borderWidth: 1,
-    borderColor: colors.borderSubtle,
+    borderColor: 'transparent',
     alignItems: 'center',
   },
   tabActive: {
-    backgroundColor: colors.accentPrimary,
-    borderColor: colors.accentPrimary,
+    backgroundColor: '#E3E8F2',
+    borderColor: '#C3CDDE',
   },
   tabText: {
     ...typography.body,
-    fontWeight: '600',
+    fontWeight: '700',
+    letterSpacing: 0.2,
     color: colors.textSecondary,
   },
   tabTextActive: {
-    color: colors.backgroundPrimary,
+    color: colors.textPrimary,
+  },
+  tabSubtitle: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    marginBottom: spacing.lg,
+    marginTop: spacing.xs,
   },
   wishlistRow: {
     flexDirection: 'row',
@@ -949,12 +937,19 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
   },
   headerRow: {
-    marginBottom: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+    flexWrap: 'wrap',
+    marginBottom: spacing.xs,
   },
   sectionTitle: {
     ...typography.sectionTitle,
+    fontSize: 22,
+    fontWeight: '600',
+    fontStyle: 'italic',
     color: colors.textPrimary,
-    marginBottom: spacing.md,
   },
   insightsSection: {
     marginTop: spacing.xl,
@@ -962,16 +957,22 @@ const styles = StyleSheet.create({
   },
   insightSubtitle: {
     ...typography.caption,
-    color: colors.textMuted,
-    marginBottom: 2,
+    color: colors.textSecondary,
+    marginBottom: spacing.xs,
   },
-  insightCard: {
+  insightGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.md,
+  },
+  insightTile: {
+    flexBasis: '48%',
     backgroundColor: colors.backgroundPrimary,
     borderRadius: spacing.md,
     padding: spacing.md,
     borderWidth: 1,
     borderColor: colors.borderSubtle,
-    gap: spacing.sm,
+    gap: spacing.xs,
   },
   insightTitle: {
     fontSize: 15,
@@ -983,6 +984,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: spacing.sm,
+    paddingVertical: spacing.xs,
   },
   insightLabel: {
     ...typography.body,
@@ -992,7 +994,7 @@ const styles = StyleSheet.create({
   },
   insightSubtext: {
     ...typography.caption,
-    color: colors.textMuted,
+    color: colors.textSecondary,
   },
   insightValue: {
     ...typography.body,
@@ -1000,11 +1002,11 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
   },
   insightEmpty: {
-    color: colors.textMuted,
+    color: colors.textSecondary,
     ...typography.caption,
   },
   insightNote: {
-    color: colors.textMuted,
+    color: colors.textSecondary,
     ...typography.caption,
   },
   pickerRow: {
@@ -1031,12 +1033,22 @@ const styles = StyleSheet.create({
   },
   totalAmount: {
     fontSize: 36,
-    fontWeight: '800',
+    fontWeight: '900',
     color: colors.textPrimary,
+    marginTop: spacing.sm,
     marginBottom: spacing.xl,
   },
   chartSection: {
-    gap: spacing.xl,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    gap: spacing.lg,
+    marginBottom: spacing.xl,
+  },
+  chartColumn: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 160,
   },
   donutWrapper: {
     alignItems: 'center',
@@ -1058,30 +1070,38 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.borderSubtle,
     alignItems: 'center',
+    width: '100%',
   },
   legend: {
-    gap: spacing.md,
+    flex: 1,
+    minWidth: 200,
+    gap: spacing.sm,
   },
   legendRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
+    paddingVertical: spacing.sm,
+  },
+  legendTextBlock: {
+    flex: 1,
+    gap: 2,
   },
   legendSwatch: {
     width: spacing.lg,
     height: spacing.lg,
-    borderRadius: spacing.xs,
+    borderRadius: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.backgroundSecondary,
   },
   legendLabel: {
-    flex: 1,
     fontSize: 15,
-    fontWeight: '600',
+    fontWeight: '800',
     color: colors.textPrimary,
   },
-  legendValue: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: colors.textPrimary,
+  legendMeta: {
+    ...typography.caption,
+    color: colors.textSecondary,
   },
   emptyText: {
     fontSize: 15,
@@ -1107,16 +1127,18 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: colors.textMuted,
   },
-  modalBackdrop: {
+  sheetBackdrop: {
     flex: 1,
-    backgroundColor: colors.modalBackdrop,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: spacing.xl,
+    backgroundColor: 'rgba(0, 0, 0, 0.25)',
+    justifyContent: 'flex-end',
   },
   selectorRow: {
     flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
     gap: spacing.sm,
+    justifyContent: 'flex-end',
+    flexShrink: 0,
   },
   selectorField: {
     flexDirection: 'row',
@@ -1128,6 +1150,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.backgroundPrimary,
     borderWidth: 1,
     borderColor: colors.borderSubtle,
+    minWidth: 120,
   },
   selectorLabel: {
     ...typography.caption,
@@ -1153,7 +1176,7 @@ const styles = StyleSheet.create({
   },
   modalSubtitle: {
     ...typography.caption,
-    color: colors.textMuted,
+    color: colors.textSecondary,
     marginBottom: spacing.sm,
   },
   modalList: {
@@ -1175,7 +1198,7 @@ const styles = StyleSheet.create({
   },
   modalItemMeta: {
     ...typography.caption,
-    color: colors.textMuted,
+    color: colors.textSecondary,
   },
   modalItemValue: {
     fontSize: 15,
@@ -1198,21 +1221,37 @@ const styles = StyleSheet.create({
     color: colors.backgroundPrimary,
     fontWeight: '700',
   },
-  selectorModalCard: {
+  bottomSheet: {
     width: '100%',
-    borderRadius: spacing.md,
+    borderTopLeftRadius: spacing.xl,
+    borderTopRightRadius: spacing.xl,
     backgroundColor: colors.backgroundPrimary,
-    padding: spacing.lg,
-    gap: spacing.sm,
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.xl,
+    gap: spacing.md,
+  },
+  sheetHandle: {
+    alignSelf: 'center',
+    width: 44,
+    height: 4,
+    borderRadius: 4,
+    backgroundColor: colors.borderSubtle,
   },
   modalOptionsList: {
-    gap: spacing.sm,
+    gap: spacing.xs,
   },
   modalOption: {
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
-    borderRadius: spacing.sm,
+    borderRadius: spacing.md,
     backgroundColor: colors.backgroundSecondary,
+    borderWidth: 1,
+    borderColor: colors.borderSubtle,
+  },
+  modalOptionActive: {
+    backgroundColor: '#EEF2F7',
+    borderColor: '#CBD5E1',
   },
   modalOptionText: {
     fontSize: 15,
@@ -1221,6 +1260,5 @@ const styles = StyleSheet.create({
   },
   modalOptionTextActive: {
     color: colors.textPrimary,
-    textDecorationLine: 'underline',
   },
 });
