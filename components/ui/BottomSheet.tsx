@@ -34,42 +34,44 @@ interface BottomSheetProps {
 }
 
 export function BottomSheet({ visible, onClose, title, children }: BottomSheetProps) {
-    const translateY = useRef(new Animated.Value(0)).current;
+    const translateY = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
 
-    const resetPosition = useCallback(() => {
-        Animated.spring(translateY, {
-            toValue: 0,
-            useNativeDriver: true,
-            tension: 50,
-            friction: 10,
-        }).start();
-    }, [translateY]);
+    const animateTo = useCallback(
+        (value: number, callback?: () => void) => {
+            Animated.timing(translateY, {
+                toValue: value,
+                duration: 200,
+                useNativeDriver: true,
+            }).start(() => {
+                if (callback) callback();
+            });
+        },
+        [translateY],
+    );
 
-    const dismiss = useCallback(() => {
-        Animated.timing(translateY, {
-            toValue: SCREEN_HEIGHT,
-            duration: 200,
-            useNativeDriver: true,
-        }).start(() => {
-            translateY.setValue(0);
+    const handleClose = useCallback(() => {
+        animateTo(SCREEN_HEIGHT, () => {
+            translateY.setValue(SCREEN_HEIGHT);
             onClose();
         });
-    }, [onClose, translateY]);
+    }, [animateTo, onClose, translateY]);
+
+    const resetPosition = useCallback(() => {
+        animateTo(0);
+    }, [animateTo]);
 
     const panResponder = useRef(
         PanResponder.create({
             onStartShouldSetPanResponder: () => true,
-            onMoveShouldSetPanResponder: (_, gestureState) => {
-                return gestureState.dy > 10;
-            },
+            onMoveShouldSetPanResponder: (_, gestureState) => gestureState.dy > 6,
             onPanResponderMove: (_, gestureState) => {
                 if (gestureState.dy > 0) {
                     translateY.setValue(gestureState.dy);
                 }
             },
             onPanResponderRelease: (_, gestureState) => {
-                if (gestureState.dy > DISMISS_THRESHOLD || gestureState.vy > 0.5) {
-                    dismiss();
+                if (gestureState.dy > DISMISS_THRESHOLD || gestureState.vy > 0.65) {
+                    handleClose();
                 } else {
                     resetPosition();
                 }
@@ -77,17 +79,28 @@ export function BottomSheet({ visible, onClose, title, children }: BottomSheetPr
         }),
     ).current;
 
+    const handleOnShow = useCallback(() => {
+        translateY.setValue(SCREEN_HEIGHT);
+        resetPosition();
+    }, [resetPosition, translateY]);
+
     return (
-        <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+        <Modal
+            visible={visible}
+            transparent
+            animationType="fade"
+            onShow={handleOnShow}
+            onRequestClose={handleClose}
+        >
             <View style={styles.backdrop}>
-                <Pressable style={styles.backdropPressable} onPress={onClose} />
+                <Pressable style={styles.backdropPressable} onPress={handleClose} />
                 <Animated.View
                     style={[styles.sheet, { transform: [{ translateY }] }]}
                     {...panResponder.panHandlers}
                 >
                     <View style={styles.handle} />
                     {title ? (
-                        <Text variant="sectionTitle" style={styles.title}>
+                        <Text variant="sectionTitle" color={colors.textPrimary} style={styles.title}>
                             {title}
                         </Text>
                     ) : null}
@@ -116,15 +129,15 @@ const styles = StyleSheet.create({
     },
     sheet: {
         backgroundColor: colors.backgroundPrimary,
-        borderTopLeftRadius: spacing.lg,
-        borderTopRightRadius: spacing.lg,
+        borderTopLeftRadius: spacing.xl,
+        borderTopRightRadius: spacing.xl,
         paddingTop: spacing.sm,
         paddingHorizontal: spacing.lg,
         paddingBottom: spacing.xl,
         maxHeight: SCREEN_HEIGHT * 0.85,
     },
     handle: {
-        width: 36,
+        width: 40,
         height: 4,
         backgroundColor: colors.borderSubtle,
         borderRadius: 2,
@@ -132,15 +145,15 @@ const styles = StyleSheet.create({
         marginBottom: spacing.md,
     },
     title: {
-        fontWeight: '800',
+        fontWeight: '600',
         textAlign: 'center',
-        marginBottom: spacing.md,
+        marginBottom: spacing.lg,
     },
     content: {
         flexGrow: 0,
     },
     contentContainer: {
-        paddingBottom: spacing.md,
+        paddingBottom: spacing.lg,
     },
 });
 

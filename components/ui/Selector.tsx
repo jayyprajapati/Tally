@@ -23,7 +23,10 @@ export function Selector({ label, value, placeholder, style, ...props }: Selecto
     const isPlaceholder = !value;
 
     return (
-        <Pressable style={[styles.container, style]} {...props}>
+        <Pressable
+            {...props}
+            style={({ pressed }) => [styles.container, pressed ? styles.pressed : null, style]}
+        >
             <View style={styles.content}>
                 {label ? (
                     <Text variant="caption" color={colors.textMuted} style={styles.label}>
@@ -49,18 +52,21 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'space-between',
         backgroundColor: colors.backgroundPrimary,
+        borderRadius: spacing.sm,
         borderWidth: 1,
         borderColor: colors.borderSubtle,
-        borderRadius: spacing.sm,
         paddingHorizontal: spacing.md,
         paddingVertical: spacing.md,
     },
+    pressed: {
+        opacity: 0.75,
+    },
     content: {
         flex: 1,
-        gap: 2,
+        gap: spacing.xs,
     },
     label: {
-        fontWeight: '600',
+        fontWeight: '500',
     },
     value: {
         fontWeight: '600',

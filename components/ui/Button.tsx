@@ -1,73 +1,86 @@
-/**
- * Shared Button component with primary/secondary variants.
- * Consistent styling using design tokens.
- */
-
 import React from 'react';
-import { Pressable, PressableProps, StyleProp, StyleSheet, Text, ViewStyle } from 'react-native';
+import {
+    Pressable,
+    PressableProps,
+    Text as RNText,
+    StyleProp,
+    StyleSheet,
+    ViewStyle,
+} from 'react-native';
 
 import { colors } from '@/theme/colors';
 import { spacing } from '@/theme/spacing';
 import { typography } from '@/theme/typography';
 
-type ButtonVariant = 'primary' | 'secondary';
-
-interface ButtonProps extends Omit<PressableProps, 'children' | 'style'> {
-    variant?: ButtonVariant;
-    title: string;
+type BaseButtonProps = Omit<PressableProps, 'style' | 'children'> & {
+    label: string;
     style?: StyleProp<ViewStyle>;
-}
+};
 
-export function Button({ variant = 'primary', title, style, disabled, ...props }: ButtonProps) {
+function BaseButton({ label, style, disabled, ...props }: BaseButtonProps & { variant: 'primary' | 'secondary' }) {
+    const { variant, ...rest } = props;
     const isPrimary = variant === 'primary';
 
     return (
         <Pressable
-            style={[
+            accessibilityRole="button"
+            disabled={disabled}
+            style={({ pressed }) => [
                 styles.base,
                 isPrimary ? styles.primary : styles.secondary,
-                disabled && styles.disabled,
+                pressed && !disabled ? styles.pressed : null,
+                disabled ? styles.disabled : null,
                 style,
             ]}
-            disabled={disabled}
-            {...props}
+            {...rest}
         >
-            <Text style={[styles.text, isPrimary ? styles.textPrimary : styles.textSecondary]}>
-                {title}
-            </Text>
+            <RNText style={[styles.label, isPrimary ? styles.labelPrimary : styles.labelSecondary]}>{label}</RNText>
         </Pressable>
     );
 }
 
+export function PrimaryButton(props: BaseButtonProps) {
+    return <BaseButton variant="primary" {...props} />;
+}
+
+export function SecondaryButton(props: BaseButtonProps) {
+    return <BaseButton variant="secondary" {...props} />;
+}
+
 const styles = StyleSheet.create({
     base: {
-        paddingVertical: spacing.md,
-        paddingHorizontal: spacing.lg,
-        borderRadius: spacing.sm,
         alignItems: 'center',
+        borderRadius: spacing.sm,
+        flexDirection: 'row',
         justifyContent: 'center',
+        paddingHorizontal: spacing.lg,
+        paddingVertical: spacing.md,
     },
     primary: {
-        backgroundColor: colors.textPrimary,
+        backgroundColor: colors.accentPrimary,
     },
     secondary: {
-        backgroundColor: colors.backgroundSecondary,
-        borderWidth: 1,
+        backgroundColor: colors.backgroundPrimary,
         borderColor: colors.borderSubtle,
+        borderWidth: 1,
+    },
+    pressed: {
+        opacity: 0.75,
     },
     disabled: {
-        opacity: 0.5,
+        opacity: 0.4,
     },
-    text: {
+    label: {
         ...typography.body,
-        fontWeight: '700',
+        fontWeight: '600',
     },
-    textPrimary: {
+    labelPrimary: {
         color: colors.backgroundPrimary,
     },
-    textSecondary: {
+    labelSecondary: {
         color: colors.textPrimary,
     },
 });
 
-export default Button;
+export { BaseButtonProps };
+

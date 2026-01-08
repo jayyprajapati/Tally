@@ -7,24 +7,23 @@
 export const colors = {
   // Background
   backgroundPrimary: '#FFFFFF',
-  backgroundSecondary: '#F7F7F7',
+  backgroundSecondary: '#F5F5F5',
 
   // Text
-  textPrimary: '#111111',
-  textSecondary: '#555555',
-  textMuted: '#888888',
+  textPrimary: '#0F172A',
+  textSecondary: '#475569',
+  textMuted: '#94A3B8',
 
-  // Accent (calm blue)
-  accentPrimary: '#2563EB',
+  // Accent — singular calm blue
+  accentPrimary: '#325CF0',
 
   // Borders / Dividers
-  borderSubtle: '#E5E5E5',
+  borderSubtle: '#E2E8F0',
 
-  // Semantic: used for specific UI elements (mapped from core tokens)
-  // These are derived and should still only use the core palette values
+  // Semantic tokens derived from palette
   white: '#FFFFFF',
-  black: '#111111',
-  modalBackdrop: 'rgba(0,0,0,0.35)',
+  black: '#0F172A',
+  modalBackdrop: 'rgba(15, 23, 42, 0.35)',
 } as const;
 
 export type ColorToken = keyof typeof colors;

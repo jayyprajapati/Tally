@@ -3,26 +3,26 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Alert,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Switch,
-  Text,
-  TextInput,
-  View,
+    Alert,
+    KeyboardAvoidingView,
+    Modal,
+    Platform,
+    Pressable,
+    ScrollView,
+    StyleSheet,
+    Switch,
+    Text,
+    TextInput,
+    View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Credential, getAllCredentials, maskCredentialValue } from '@/lib/db/credentials';
 import {
-  Subscription,
-  addSubscription,
-  getSubscriptionById,
-  updateSubscription,
+    Subscription,
+    addSubscription,
+    getSubscriptionById,
+    updateSubscription,
 } from '@/lib/db/subscriptions';
 import { ReminderDaysBefore, cancelSubscriptionReminder, scheduleSubscriptionReminder } from '@/lib/reminders';
 import { colors, spacing, typography } from '@/theme';
@@ -132,6 +132,7 @@ export default function AddSubscriptionScreen() {
   const [pickerVisible, setPickerVisible] = useState(false);
   const [categoryPickerVisible, setCategoryPickerVisible] = useState(false);
   const [categoryLocked, setCategoryLocked] = useState(false);
+  const [nameLocked, setNameLocked] = useState(false);
   const [billingLocked, setBillingLocked] = useState(false);
   const [amountLocked, setAmountLocked] = useState(false);
   const [reminderEnabled, setReminderEnabled] = useState(false);

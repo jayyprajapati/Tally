@@ -10,7 +10,7 @@ import {
   Switch,
   Text,
   TouchableOpacity,
-  View
+  View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Circle, Path, Text as SvgText } from 'react-native-svg';
@@ -20,17 +20,23 @@ import { OneTimeItem, getAllOneTimeItems } from '@/lib/db/onetime-items';
 import { Subscription, getAllSubscriptions } from '@/lib/db/subscriptions';
 import { colors, spacing, typography } from '@/theme';
 
-const categoryMeta = {
-  General: { color: '#6366F1' },
-  Entertainment: { color: '#F59E0B' },
-  Productivity: { color: '#10B981' },
-  Fitness: { color: '#EF4444' },
-  Finance: { color: '#0EA5E9' },
-  Education: { color: '#8B5CF6' },
-  Other: { color: '#9CA3AF' },
-} as const;
+const hexToRgb = (hex: string): [number, number, number] => {
+  const sanitized = hex.replace('#', '');
+  const bigint = parseInt(sanitized, 16);
+  const r = (bigint >> 16) & 255;
+  const g = (bigint >> 8) & 255;
+  const b = bigint & 255;
+  return [r, g, b];
+};
 
-type CategoryKey = keyof typeof categoryMeta;
+const accentRgb = hexToRgb(colors.accentPrimary);
+
+const getSliceColor = (index: number) => {
+  const baseAlpha = 0.35 + index * 0.12;
+  const alpha = Math.max(0.25, Math.min(baseAlpha, 0.85));
+  const [r, g, b] = accentRgb;
+  return `rgba(${r}, ${g}, ${b}, ${alpha.toFixed(2)})`;
+};
 
 type Slice = {
   category: string;
@@ -97,13 +103,13 @@ const DonutChart = ({ data, total, label }: { data: Slice[]; total: number; labe
       <View style={styles.donutWrapper}>
         <Svg width={size} height={size}>
           <Circle cx={size / 2} cy={size / 2} r={radius} fill={slice.color} />
-          <Circle cx={size / 2} cy={size / 2} r={innerRadius} fill="#f8f8f8" />
+          <Circle cx={size / 2} cy={size / 2} r={innerRadius} fill={colors.backgroundPrimary} />
           <SvgText
             x={size / 2}
             y={size / 2 - 4}
             fontSize={12}
             fontWeight="600"
-            fill="#6b7280"
+            fill={colors.textSecondary}
             textAnchor="middle">
             {label}
           </SvgText>
@@ -112,7 +118,7 @@ const DonutChart = ({ data, total, label }: { data: Slice[]; total: number; labe
             y={size / 2 + 16}
             fontSize={16}
             fontWeight="800"
-            fill="#0f172a"
+            fill={colors.textPrimary}
             textAnchor="middle">
             {formatCurrency(total)}
           </SvgText>
@@ -145,13 +151,13 @@ const DonutChart = ({ data, total, label }: { data: Slice[]; total: number; labe
 
           return <Path key={slice.category} d={d} fill={slice.color} />;
         })}
-        <Circle cx={size / 2} cy={size / 2} r={innerRadius} fill="#f8f8f8" />
+        <Circle cx={size / 2} cy={size / 2} r={innerRadius} fill={colors.backgroundPrimary} />
         <SvgText
           x={size / 2}
           y={size / 2 - 4}
           fontSize={12}
           fontWeight="600"
-          fill="#6b7280"
+          fill={colors.textSecondary}
           textAnchor="middle">
           {label}
         </SvgText>
@@ -160,7 +166,7 @@ const DonutChart = ({ data, total, label }: { data: Slice[]; total: number; labe
           y={size / 2 + 16}
           fontSize={16}
           fontWeight="800"
-          fill="#0f172a"
+          fill={colors.textPrimary}
           textAnchor="middle">
           {formatCurrency(total)}
         </SvgText>
@@ -334,13 +340,12 @@ export default function DashboardScreen() {
         totalSpend += item.amount;
       });
 
-      const slices: Slice[] = Object.entries(categoryTotals)
-        .filter(([, value]) => value > 0)
-        .map(([category, value]) => ({
-          category,
-          value,
-          color: categoryMeta[category as CategoryKey]?.color ?? categoryMeta.Other.color,
-        }));
+      const entries = Object.entries(categoryTotals).filter(([, value]) => value > 0);
+      const slices: Slice[] = entries.map(([category, value], index) => ({
+        category,
+        value,
+        color: getSliceColor(index),
+      }));
 
       return { slices, total: totalSpend };
     }
@@ -377,13 +382,12 @@ export default function DashboardScreen() {
         }
       });
 
-      const slices: Slice[] = Object.entries(categoryTotals)
-        .filter(([, value]) => value > 0)
-        .map(([category, value]) => ({
-          category,
-          value,
-          color: categoryMeta[category as CategoryKey]?.color ?? categoryMeta.Other.color,
-        }));
+      const entries = Object.entries(categoryTotals).filter(([, value]) => value > 0);
+      const slices: Slice[] = entries.map(([category, value], index) => ({
+        category,
+        value,
+        color: getSliceColor(index),
+      }));
 
       return { slices, total: totalSpend };
     }
@@ -403,13 +407,12 @@ export default function DashboardScreen() {
         }
       });
 
-      const slices: Slice[] = Object.entries(categoryTotals)
-        .filter(([, value]) => value > 0)
-        .map(([category, value]) => ({
-          category,
-          value,
-          color: categoryMeta[category as CategoryKey]?.color ?? categoryMeta.Other.color,
-        }));
+      const entries = Object.entries(categoryTotals).filter(([, value]) => value > 0);
+      const slices: Slice[] = entries.map(([category, value], index) => ({
+        category,
+        value,
+        color: getSliceColor(index),
+      }));
 
       return { slices, total: totalSpend };
     }
@@ -428,7 +431,8 @@ export default function DashboardScreen() {
   const insights = useMemo(() => {
     const now = new Date();
     const categoryCount: Record<string, number> = {};
-    const billingCount: Record<'monthly' | 'yearly' | 'lifetime', number> = {
+    const billingCount: Record<Subscription['billingType'], number> = {
+      weekly: 0,
       monthly: 0,
       yearly: 0,
       lifetime: 0,
@@ -630,11 +634,17 @@ export default function DashboardScreen() {
 
         <View style={styles.wishlistRow}>
           <Text style={styles.wishlistLabel}>Include Wishlist in Analytics</Text>
-          <Switch value={includeWishlist} onValueChange={setIncludeWishlist} />
+          <Switch
+            value={includeWishlist}
+            onValueChange={setIncludeWishlist}
+            trackColor={{ false: colors.borderSubtle, true: colors.accentPrimary }}
+            thumbColor={colors.backgroundPrimary}
+            ios_backgroundColor={colors.borderSubtle}
+          />
         </View>
 
         {loading ? (
-          <ActivityIndicator size="small" color="#111827" style={{ marginTop: 40 }} />
+          <ActivityIndicator size="small" color={colors.textPrimary} style={{ marginTop: 40 }} />
         ) : (
           <>
             {!subscriptions.length ? (
@@ -906,16 +916,19 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.lg,
     borderRadius: spacing.sm,
-    backgroundColor: colors.borderSubtle,
+    backgroundColor: colors.backgroundPrimary,
+    borderWidth: 1,
+    borderColor: colors.borderSubtle,
     alignItems: 'center',
   },
   tabActive: {
-    backgroundColor: colors.textPrimary,
+    backgroundColor: colors.accentPrimary,
+    borderColor: colors.accentPrimary,
   },
   tabText: {
     ...typography.body,
-    fontWeight: '700',
-    color: colors.textMuted,
+    fontWeight: '600',
+    color: colors.textSecondary,
   },
   tabTextActive: {
     color: colors.backgroundPrimary,

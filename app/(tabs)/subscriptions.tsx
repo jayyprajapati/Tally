@@ -1,13 +1,18 @@
-import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, FlatList, ListRenderItem, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { SUBSCRIPTION_FILTERS_KEY } from '@/app/subscription-filters';
 import CredentialReveal from '@/components/credential-reveal';
+import { PrimaryButton, SecondaryButton } from '@/components/ui/Button';
+import { Divider } from '@/components/ui/Divider';
+import { RowItem } from '@/components/ui/RowItem';
+import { SectionHeader } from '@/components/ui/SectionHeader';
+import { Selector } from '@/components/ui/Selector';
+import { Text } from '@/components/ui/Text';
 import { Credential, getAllCredentials, maskCredentialValue } from '@/lib/db/credentials';
 import { OneTimeItem, getAllOneTimeItems } from '@/lib/db/onetime-items';
 import {
@@ -18,46 +23,42 @@ import {
 import { colors, spacing, typography } from '@/theme';
 
 const formatCurrency = (value: number) =>
-  `₹${value.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+  `₹${value.toLocaleString('en-IN', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  })}`;
+
 const formatDate = (value: string | Date) =>
   (value instanceof Date ? value.toISOString() : new Date(value).toISOString()).slice(0, 10);
 
-const categories = ['General', 'Entertainment', 'Productivity', 'Fitness', 'Finance', 'Education', 'Other'];
-const billingTypes: Subscription['billingType'][] = ['weekly', 'monthly', 'yearly', 'lifetime'];
-const statuses: Subscription['status'][] = ['active', 'wishlist'];
+type Filters = {
+  categories: string[];
+  billingType: string;
+  status: string;
+  credential: string;
+  accessType: 'all' | Subscription['accessType'];
+};
 
 export default function SubscriptionsScreen() {
+  const router = useRouter();
   const [items, setItems] = useState<Subscription[]>([]);
   const [oneTimeItems, setOneTimeItems] = useState<OneTimeItem[]>([]);
-  const defaultFilters = useMemo(
+  const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [credentials, setCredentials] = useState<Credential[]>([]);
+
+  const defaultFilters = useMemo<Filters>(
     () => ({
-      categories: [] as string[],
+      categories: [],
       billingType: 'all',
       status: 'active',
-      credential: 'all' as string,
-      accessType: 'all' as 'all' | Subscription['accessType'],
+      credential: 'all',
+      accessType: 'all',
     }),
     [],
   );
-  const [filters, setFilters] = useState(defaultFilters);
-  const [draftFilters, setDraftFilters] = useState(defaultFilters);
-  const [loading, setLoading] = useState(false);
-  const [credentials, setCredentials] = useState<Credential[]>([]);
-  const router = useRouter();
 
-  const categoryMeta = useMemo(
-    () => ({
-      General: { color: '#6366F1', icon: '📦' },
-      Entertainment: { color: '#F59E0B', icon: '🎬' },
-      Productivity: { color: '#10B981', icon: '⚡️' },
-      Fitness: { color: '#EF4444', icon: '💪' },
-      Finance: { color: '#0EA5E9', icon: '💳' },
-      Education: { color: '#8B5CF6', icon: '📚' },
-      Other: { color: '#9CA3AF', icon: '🗂️' },
-    } as const),
-    [],
-  );
-  type CategoryKey = keyof typeof categoryMeta;
+  const [filters, setFilters] = useState<Filters>(defaultFilters);
 
   const loadSubscriptions = useCallback(async () => {
     setLoading(true);
@@ -66,6 +67,20 @@ export default function SubscriptionsScreen() {
       setItems(result);
     } finally {
       setLoading(false);
+    }
+  }, []);
+
+  const refreshSubscriptions = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      const result = await getAllSubscriptions();
+      setItems(result);
+      const creds = await getAllCredentials();
+      setCredentials(creds);
+      const ones = await getAllOneTimeItems();
+      setOneTimeItems(ones);
+    } finally {
+      setRefreshing(false);
     }
   }, []);
 
@@ -81,29 +96,29 @@ export default function SubscriptionsScreen() {
 
   useEffect(() => {
     loadSubscriptions();
-    loadCredentials();
     loadOneTimeItems();
-  }, [loadSubscriptions, loadCredentials, loadOneTimeItems]);
+    loadCredentials();
+  }, [loadSubscriptions, loadOneTimeItems, loadCredentials]);
 
   useFocusEffect(
     useCallback(() => {
       loadSubscriptions();
-      loadCredentials();
       loadOneTimeItems();
+      loadCredentials();
 
-      // Load filters from AsyncStorage
       const loadFilters = async () => {
         try {
           const savedFilters = await AsyncStorage.getItem(SUBSCRIPTION_FILTERS_KEY);
           if (savedFilters) {
             setFilters(JSON.parse(savedFilters));
           }
-        } catch (e) {
-          // Ignore errors
+        } catch {
+          // ignore persisted filters errors
         }
       };
+
       loadFilters();
-    }, [loadSubscriptions, loadCredentials, loadOneTimeItems]),
+    }, [loadSubscriptions, loadOneTimeItems, loadCredentials]),
   );
 
   const credentialMap = useMemo(() => {
@@ -124,25 +139,13 @@ export default function SubscriptionsScreen() {
         filters.credential === 'all'
           ? true
           : filters.credential === 'none'
-            ? !item.linkedCredentialId
-            : item.linkedCredentialId === filters.credential;
+          ? !item.linkedCredentialId
+          : item.linkedCredentialId === filters.credential;
       const matchesAccessType = filters.accessType === 'all' || item.accessType === filters.accessType;
 
       return matchesCategory && matchesBilling && matchesStatus && matchesCredential && matchesAccessType;
     });
   }, [filters, items]);
-
-  const resetFilters = () => {
-    setFilters(defaultFilters);
-    setDraftFilters(defaultFilters);
-  };
-
-  useEffect(() => {
-    setDraftFilters({
-      ...filters,
-      categories: filters.categories ?? [],
-    });
-  }, [filters]);
 
   const isDefaultFilters = useMemo(
     () =>
@@ -154,18 +157,6 @@ export default function SubscriptionsScreen() {
     [defaultFilters, filters],
   );
 
-  const handleOpenEdit = (item: Subscription) => {
-    router.push({ pathname: '/add-subscription', params: { id: String(item.id), mode: 'edit' } });
-  };
-
-  const handleAdd = () => {
-    router.push('/add-subscription');
-  };
-
-  const handleOpenOneTime = () => {
-    router.push('/add-onetime');
-  };
-
   const handleOpenFilters = () => {
     router.push({
       pathname: '/subscription-filters',
@@ -173,661 +164,268 @@ export default function SubscriptionsScreen() {
     });
   };
 
+  const handleAddSubscription = () => {
+    router.push('/add-subscription');
+  };
+
+  const handleAddOneTime = () => {
+    router.push('/add-onetime');
+  };
+
+  const handleEdit = (item: Subscription) => {
+    router.push({ pathname: '/add-subscription', params: { id: String(item.id), mode: 'edit' } });
+  };
+
+  const confirmDelete = (item: Subscription) => {
+    Alert.alert('Delete subscription?', `Remove ${item.name}?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: () => handleDelete(item.id),
+      },
+    ]);
+  };
+
   const handleDelete = async (id: string | number) => {
     await deleteSubscription(id);
     await loadSubscriptions();
   };
 
-  const renderItem = ({ item }: { item: Subscription }) => {
-    const meta = categoryMeta[(item.category as CategoryKey) ?? 'Other'] ?? categoryMeta.Other;
-    const isLifetime = item.billingType === 'lifetime';
-    const isUserPaying = item.userPaying !== false;
-    const statusColor = item.status === 'active' ? '#DCFCE7' : '#E0F2FE';
-    const statusTextColor = item.status === 'active' ? '#166534' : '#0F172A';
+  const resetFilters = async () => {
+    setFilters(defaultFilters);
+    await AsyncStorage.removeItem(SUBSCRIPTION_FILTERS_KEY);
+  };
+
+  const renderSubscription: ListRenderItem<Subscription> = ({ item }) => {
     const linkedCredential = item.linkedCredentialId ? credentialMap[item.linkedCredentialId] : undefined;
     const linkedMask = linkedCredential ? maskCredentialValue(linkedCredential) : 'None';
+    const paying = item.userPaying !== false;
+    const isLifetime = item.billingType === 'lifetime';
+
+    const billingDescription = isLifetime
+      ? 'Lifetime access'
+      : item.billingType === 'weekly'
+      ? 'Weekly'
+      : item.billingType === 'monthly'
+      ? 'Monthly'
+      : 'Yearly';
+
+    const subtitleParts = [item.category || 'Uncategorized', billingDescription, item.status === 'active' ? 'Active' : 'Wishlist'];
+    const metaParts: string[] = [];
+
+    if (item.accessType === 'shared') {
+      metaParts.push(paying ? 'Shared (you pay)' : 'Shared (not paid by you)');
+    }
+
+    const subtitle = subtitleParts.filter(Boolean).join(' • ');
+    const meta = metaParts.length ? metaParts.join(' • ') : undefined;
 
     return (
-      <View style={[styles.card, isLifetime && styles.lifetimeCard]}>
-        <View style={styles.cardHeader}>
-          <View style={[styles.iconPill, { backgroundColor: `${meta.color}22` }]}>
-            <Text style={styles.icon}>{meta.icon}</Text>
+      <RowItem
+        onPress={() => handleEdit(item)}
+        onLongPress={() => confirmDelete(item)}
+        title={item.name}
+        amount={!isLifetime && paying ? formatCurrency(item.amount) : undefined}
+        subtitle={subtitle}
+        meta={meta}
+        trailing={
+          <View style={styles.rowActions}>
+            <Pressable onPress={() => handleEdit(item)} hitSlop={8}>
+              <Text variant="caption" color={colors.accentPrimary} style={styles.linkAction}>
+                Edit
+              </Text>
+            </Pressable>
+            <Pressable onPress={() => confirmDelete(item)} hitSlop={8}>
+              <Text variant="caption" color={colors.textSecondary}>
+                Delete
+              </Text>
+            </Pressable>
           </View>
-          <View style={styles.headerTextGroup}>
-            <Text style={styles.name}>{item.name}</Text>
-            {!isLifetime && isUserPaying ? <Text style={styles.amount}>{formatCurrency(item.amount)}</Text> : null}
-            <View style={styles.badgeRow}>
-              <View style={[styles.categoryBadge, { backgroundColor: `${meta.color}22` }]}>
-                <Text style={[styles.categoryText, { color: meta.color }]}>{item.category}</Text>
-              </View>
-              <View style={[styles.statusBadge, { backgroundColor: statusColor }]}>
-                <Text style={[styles.statusText, { color: statusTextColor }]}>
-                  {item.status === 'active' ? 'Active' : 'Wishlist'}
-                </Text>
-              </View>
-              {item.accessType === 'shared' ? (
-                <View style={styles.sharedBadge}>
-                  <Text style={styles.sharedText}>
-                    {isUserPaying ? 'Shared' : 'Shared (Not Paid by You)'}
-                  </Text>
-                </View>
-              ) : null}
-              <View style={[styles.billingBadge, isLifetime && styles.lifetimeBadge]}>
-                <Text style={[styles.billingText, isLifetime && styles.lifetimeText]}>
-                  {item.billingType}
-                </Text>
-              </View>
-            </View>
-            {!isUserPaying && item.accessType === 'shared' ? (
-              <Text style={styles.sharedNote}>Shared (Not Paid by You) — excluded from spend totals</Text>
-            ) : null}
-          </View>
-        </View>
-
-        <View style={styles.actionsRow}>
-          <Pressable style={[styles.actionButton, styles.editButton]} onPress={() => handleOpenEdit(item)}>
-            <Text style={[styles.actionText, styles.editText]}>Edit</Text>
-          </Pressable>
-          <Pressable style={[styles.actionButton, styles.deleteButton]} onPress={() => handleDelete(item.id)}>
-            <Text style={[styles.actionText, styles.deleteText]}>Delete</Text>
-          </Pressable>
-        </View>
-
-        <View style={styles.linkedRow}>
-          <Text style={styles.linkedLabel}>Linked Account</Text>
+        }
+      >
+        <View style={styles.credentialRow}>
+          <Text variant="caption" color={colors.textMuted}>
+            Linked account
+          </Text>
           <CredentialReveal
             value={linkedCredential?.value}
             maskedValue={linkedMask}
-            textStyle={styles.linkedValue}
+            textStyle={styles.credentialValue}
             disabled={!linkedCredential}
           />
         </View>
-      </View>
+      </RowItem>
     );
   };
 
-  return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.topActions}>
-        <Text style={styles.screenTitle}>Subscriptions</Text>
-        <View style={styles.topActionsRight}>
-          {!isDefaultFilters ? (
-            <Pressable onPress={resetFilters} style={styles.resetInline} hitSlop={8}>
-              <Text style={styles.resetInlineText}>Reset</Text>
-            </Pressable>
-          ) : null}
-          <Pressable
-            style={styles.filterButton}
-            onPress={handleOpenFilters}
-          >
-            <Ionicons name="filter" size={16} color="#111827" />
-            <Text style={styles.filterButtonText}>Filters</Text>
-          </Pressable>
-        </View>
-      </View>
+  const renderOneTimeItem = ({ item }: { item: OneTimeItem }) => (
+    <RowItem
+      title={item.name}
+      amount={formatCurrency(item.amount)}
+      subtitle={[item.platform, item.category].filter(Boolean).join(' • ')}
+      meta={formatDate(item.date)}
+      disabled
+    />
+  );
 
+  return (
+    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
       <FlatList
         data={filteredItems}
         keyExtractor={(item) => String(item.id)}
-        contentContainerStyle={styles.list}
-        renderItem={renderItem}
-        refreshing={loading}
-        onRefresh={loadSubscriptions}
+        renderItem={renderSubscription}
+        ItemSeparatorComponent={Divider}
+        contentContainerStyle={styles.listContent}
+        refreshing={refreshing}
+        onRefresh={refreshSubscriptions}
+        ListHeaderComponent={
+          <View style={styles.headerArea}>
+            <View style={styles.pageHeader}>
+              <Text variant="pageTitle" color={colors.textPrimary}>
+                Subscriptions
+              </Text>
+              <View style={styles.headerButtons}>
+                <SecondaryButton label="Add One-Time" onPress={handleAddOneTime} />
+                <PrimaryButton label="Add Subscription" onPress={handleAddSubscription} />
+              </View>
+            </View>
+
+            <View style={styles.filterBar}>
+              <Selector
+                label="Filters"
+                value=""
+                placeholder="Adjust filters"
+                onPress={handleOpenFilters}
+                style={styles.filterSelector}
+              />
+              {!isDefaultFilters ? (
+                <Pressable onPress={resetFilters} hitSlop={8}>
+                  <Text variant="caption" color={colors.accentPrimary} style={styles.resetLink}>
+                    Clear
+                  </Text>
+                </Pressable>
+              ) : null}
+            </View>
+
+            <SectionHeader
+              title={filters.status === 'wishlist' ? 'Wishlist' : 'Subscriptions'}
+              action={
+                loading ? (
+                  <Text variant="caption" color={colors.textMuted}>
+                    Updating…
+                  </Text>
+                ) : (
+                  <Text variant="caption" color={colors.textSecondary}>
+                    {filteredItems.length} items
+                  </Text>
+                )
+              }
+            />
+          </View>
+        }
         ListEmptyComponent={
           !loading ? (
             <View style={styles.emptyState}>
-              <Text style={styles.emptyTitle}>No subscriptions</Text>
-              <Text style={styles.emptyBody}>Add one to see it here.</Text>
+              <Text variant="sectionTitle" color={colors.textSecondary}>
+                Nothing to show yet
+              </Text>
+              <Text variant="body" color={colors.textMuted}>
+                Add a subscription to get started.
+              </Text>
             </View>
           ) : null
         }
         ListFooterComponent={
-          <View style={styles.oneTimeSectionWrapper}>
-            <Text style={styles.oneTimeTitle}>One-time items</Text>
+          <View style={styles.footer}>
+            <SectionHeader title="One-time items" />
             {oneTimeItems.length ? (
               <View style={styles.oneTimeList}>
                 {oneTimeItems.map((item) => (
-                  <View key={item.id} style={styles.oneTimeCard}>
-                    <View style={styles.oneTimeHeader}>
-                      <View>
-                        <Text style={styles.oneTimeName}>{item.name}</Text>
-                        <Text style={styles.oneTimeMeta}>{item.platform} • {item.category}</Text>
-                      </View>
-                      <Text style={styles.oneTimeAmount}>{formatCurrency(item.amount)}</Text>
-                    </View>
-                    <Text style={styles.oneTimeDate}>{formatDate(item.date)}</Text>
+                  <View key={item.id}>
+                    {renderOneTimeItem({ item })}
+                    <Divider />
                   </View>
                 ))}
               </View>
             ) : (
-              <Text style={styles.oneTimeEmpty}>No one-time items yet.</Text>
+              <Text variant="body" color={colors.textMuted}>
+                No one-time items recorded.
+              </Text>
             )}
-            <View style={{ height: 140 }} />
           </View>
         }
         showsVerticalScrollIndicator={false}
       />
-
-      <View style={styles.fabWrapper}>
-        <View style={styles.fabRow}>
-          <Pressable style={styles.fabSecondary} onPress={handleOpenOneTime}>
-            <Text style={styles.fabIcon}>＋</Text>
-            <Text style={styles.fabLabel}>Add One-Time</Text>
-          </Pressable>
-          <Pressable style={styles.fab} onPress={handleAdd}>
-            <Text style={styles.fabIcon}>＋</Text>
-            <Text style={styles.fabLabel}>Add subscription</Text>
-          </Pressable>
-        </View>
-      </View>
-
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  safeArea: {
     flex: 1,
-    padding: spacing.lg,
     backgroundColor: colors.backgroundSecondary,
   },
-  list: {
-    paddingVertical: spacing.md,
-    gap: spacing.md,
-  },
-  topActions: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: spacing.xs,
-    paddingTop: spacing.xs,
-    paddingBottom: spacing.sm,
-  },
-  topActionsRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  filterButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: spacing.sm,
-    backgroundColor: colors.backgroundPrimary,
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
-  },
-  filterButtonText: {
-    ...typography.body,
-    fontWeight: '700',
-    color: colors.textPrimary,
-  },
-  resetInline: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.sm,
-  },
-  resetInlineText: {
-    ...typography.caption,
-    fontWeight: '700',
-    color: colors.accentPrimary,
-  },
-  sharedNote: {
-    marginTop: spacing.xs,
-    ...typography.caption,
-    color: colors.textMuted,
-  },
-  screenTitle: {
-    ...typography.pageTitle,
-    color: colors.textPrimary,
-  },
-  filterTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: colors.textPrimary,
-  },
-  filterGroup: {
-    gap: spacing.sm,
-  },
-  filterLabel: {
-    ...typography.caption,
-    fontWeight: '700',
-    color: colors.textPrimary,
-  },
-  chipRowWrap: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-  },
-  horizontalChips: {
-    gap: spacing.sm,
-    paddingRight: spacing.xs,
-  },
-  filterChip: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: 999,
-    backgroundColor: colors.backgroundSecondary,
-  },
-  filterChipActive: {
-    backgroundColor: colors.textPrimary,
-  },
-  filterChipText: {
-    ...typography.caption,
-    fontWeight: '700',
-    color: colors.textPrimary,
-  },
-  filterChipTextActive: {
-    color: colors.backgroundPrimary,
-  },
-  sheetBackdrop: {
-    flex: 1,
-    backgroundColor: colors.modalBackdrop,
-    justifyContent: 'flex-end',
-  },
-  sheetCard: {
-    backgroundColor: colors.backgroundPrimary,
-    padding: spacing.lg,
-    borderTopLeftRadius: spacing.lg,
-    borderTopRightRadius: spacing.lg,
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
-    maxHeight: '85%',
-  },
-  sheetTitle: {
-    ...typography.sectionTitle,
-    fontWeight: '800',
-    color: colors.textPrimary,
-    textAlign: 'center',
-    marginBottom: spacing.md,
-  },
-  sheetBody: {
-    gap: spacing.md,
-  },
-  sheetField: {
-    gap: spacing.sm,
-  },
-  sheetLabel: {
-    ...typography.caption,
-    fontWeight: '700',
-    color: colors.textPrimary,
-  },
-  sheetInput: {
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
-    borderRadius: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    backgroundColor: colors.backgroundPrimary,
-    fontSize: 16,
-  },
-  sheetStatic: {
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
-    borderRadius: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    backgroundColor: colors.backgroundPrimary,
-  },
-  sheetStaticText: {
-    fontSize: 16,
-    color: colors.textPrimary,
-  },
-  sheetActions: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    marginTop: spacing.lg,
-  },
-  sheetButton: {
-    flex: 1,
-    paddingVertical: spacing.md,
-    borderRadius: spacing.sm,
-    alignItems: 'center',
-  },
-  sheetCancel: {
-    backgroundColor: colors.backgroundSecondary,
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
-  },
-  sheetCancelText: {
-    color: colors.textPrimary,
-    fontWeight: '700',
-  },
-  sheetSave: {
-    backgroundColor: colors.textPrimary,
-  },
-  sheetSaveText: {
-    color: colors.backgroundPrimary,
-    fontWeight: '700',
-  },
-  submitDisabled: {
-    opacity: 0.7,
-  },
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: colors.modalBackdrop,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: spacing.xl,
-  },
-  modalCard: {
-    width: '100%',
-    backgroundColor: colors.backgroundPrimary,
-    borderRadius: spacing.md,
-    padding: spacing.lg,
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
-  },
-  modalTitle: {
-    ...typography.sectionTitle,
-    fontWeight: '800',
-    color: colors.textPrimary,
-    marginBottom: spacing.md,
-    textAlign: 'center',
-  },
-  modalBody: {
-    paddingVertical: spacing.sm,
-    gap: spacing.md,
-  },
-  applyButton: {
-    marginTop: spacing.md,
-    paddingVertical: spacing.md,
-    borderRadius: spacing.sm,
-    backgroundColor: colors.textPrimary,
-    alignItems: 'center',
-  },
-  applyButtonText: {
-    color: colors.backgroundPrimary,
-    fontWeight: '700',
-    fontSize: 15,
-  },
-  pickerActions: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
-    marginTop: spacing.md,
-  },
-  pickerButton: {
-    flex: 1,
-    paddingVertical: spacing.md,
-    borderRadius: spacing.sm,
-    alignItems: 'center',
-  },
-  clearButton: {
-    backgroundColor: colors.backgroundSecondary,
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
-  },
-  clearText: {
-    color: colors.textPrimary,
-    fontWeight: '700',
-  },
-  closeButton: {
-    backgroundColor: colors.textPrimary,
-  },
-  closeText: {
-    color: colors.backgroundPrimary,
-    fontWeight: '700',
-  },
-  emptyState: {
-    paddingVertical: spacing.xxl + spacing.sm,
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  emptyTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: colors.textPrimary,
-  },
-  emptyBody: {
-    color: colors.textMuted,
-  },
-  card: {
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
-    borderRadius: spacing.md,
-    padding: spacing.md,
-    gap: spacing.sm,
-    backgroundColor: colors.backgroundPrimary,
-    shadowColor: colors.black,
-    shadowOpacity: 0.04,
-    shadowRadius: spacing.sm,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
-  },
-  lifetimeCard: {
-    borderColor: colors.accentPrimary,
-    backgroundColor: colors.backgroundPrimary,
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    alignItems: 'center',
-  },
-  iconPill: {
-    width: 44,
-    height: 44,
-    borderRadius: spacing.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  icon: {
-    fontSize: 20,
-  },
-  headerTextGroup: {
-    flex: 1,
-    gap: spacing.sm,
-  },
-  name: {
-    ...typography.sectionTitle,
-    fontWeight: '700',
-  },
-  amount: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: colors.textPrimary,
-  },
-  badgeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  categoryBadge: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.sm,
-    borderRadius: 999,
-  },
-  categoryText: {
-    ...typography.caption,
-    fontWeight: '700',
-  },
-  statusBadge: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.sm,
-    borderRadius: 999,
-  },
-  statusText: {
-    ...typography.caption,
-    fontWeight: '700',
-  },
-  sharedBadge: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.sm,
-    borderRadius: 999,
-    backgroundColor: colors.backgroundSecondary,
-  },
-  sharedText: {
-    ...typography.caption,
-    fontWeight: '700',
-    color: colors.accentPrimary,
-  },
-  billingBadge: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.sm,
-    borderRadius: 999,
-    backgroundColor: colors.backgroundSecondary,
-  },
-  billingText: {
-    ...typography.caption,
-    fontWeight: '700',
-    textTransform: 'capitalize',
-    color: colors.textPrimary,
-  },
-  lifetimeBadge: {
-    backgroundColor: colors.accentPrimary,
-  },
-  lifetimeText: {
-    color: colors.backgroundPrimary,
-    fontWeight: '800',
-  },
-  fabWrapper: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    padding: spacing.lg,
-    alignItems: 'center',
-  },
-  fabRow: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  fabSecondary: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    paddingVertical: spacing.md,
+  listContent: {
     paddingHorizontal: spacing.lg,
-    backgroundColor: colors.textPrimary,
-    borderRadius: 999,
-    shadowColor: colors.black,
-    shadowOpacity: 0.15,
-    shadowRadius: spacing.sm,
-    shadowOffset: { width: 0, height: spacing.sm },
-    elevation: 4,
+    paddingBottom: spacing.xxl,
+    backgroundColor: colors.backgroundPrimary,
   },
-  fab: {
+  headerArea: {
+    paddingTop: spacing.xl,
+    paddingBottom: spacing.md,
+    gap: spacing.lg,
+  },
+  pageHeader: {
+    gap: spacing.md,
+  },
+  headerButtons: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  filterBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'space-between',
     gap: spacing.sm,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.xl,
-    backgroundColor: colors.textPrimary,
-    borderRadius: 999,
-    shadowColor: colors.black,
-    shadowOpacity: 0.15,
-    shadowRadius: spacing.sm,
-    shadowOffset: { width: 0, height: spacing.sm },
-    elevation: 4,
   },
-  fabIcon: {
-    color: colors.backgroundPrimary,
-    fontSize: 18,
-    fontWeight: '700',
-  },
-  fabLabel: {
-    color: colors.backgroundPrimary,
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  actionsRow: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    marginTop: spacing.sm,
-  },
-  actionButton: {
+  filterSelector: {
     flex: 1,
-    paddingVertical: spacing.sm,
-    borderRadius: spacing.sm,
+  },
+  resetLink: {
+    fontWeight: '600',
+  },
+  rowActions: {
+    flexDirection: 'row',
+    gap: spacing.md,
+  },
+  credentialRow: {
+    marginTop: spacing.sm,
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: spacing.md,
   },
-  actionText: {
-    fontWeight: '700',
-    ...typography.body,
-  },
-  editButton: {
-    backgroundColor: colors.backgroundSecondary,
-  },
-  editText: {
-    color: colors.accentPrimary,
-  },
-  deleteButton: {
-    backgroundColor: colors.backgroundSecondary,
-  },
-  deleteText: {
+  credentialValue: {
+    ...typography.caption,
     color: colors.textSecondary,
   },
-  linkedRow: {
-    marginTop: spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: colors.borderSubtle,
-    paddingTop: spacing.sm,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+  emptyState: {
+    alignItems: 'flex-start',
     gap: spacing.sm,
+    paddingVertical: spacing.xl,
   },
-  linkedLabel: {
-    ...typography.body,
-    fontWeight: '700',
-    color: colors.textPrimary,
-  },
-  linkedValue: {
-    ...typography.body,
-    color: colors.textPrimary,
-  },
-  oneTimeSectionWrapper: {
-    marginTop: spacing.md,
-    gap: spacing.sm,
-  },
-  oneTimeTitle: {
-    ...typography.sectionTitle,
-    fontWeight: '800',
-    color: colors.textPrimary,
-    paddingHorizontal: spacing.xs,
+  footer: {
+    paddingTop: spacing.xl,
+    paddingBottom: spacing.xxl,
+    gap: spacing.md,
   },
   oneTimeList: {
-    gap: spacing.sm,
-  },
-  oneTimeCard: {
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.borderSubtle,
-    borderRadius: spacing.md,
-    padding: spacing.md,
-    backgroundColor: colors.backgroundPrimary,
-    gap: spacing.sm,
+    borderRadius: spacing.sm,
+    overflow: 'hidden',
   },
-  oneTimeHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  oneTimeName: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.textPrimary,
-  },
-  oneTimeMeta: {
-    ...typography.caption,
-    color: colors.textMuted,
-    marginTop: 2,
-  },
-  oneTimeAmount: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: colors.textPrimary,
-  },
-  oneTimeDate: {
-    ...typography.caption,
-    color: colors.textMuted,
-  },
-  oneTimeEmpty: {
-    color: colors.textMuted,
-    paddingHorizontal: spacing.xs,
+  linkAction: {
+    fontWeight: '600',
   },
 });
