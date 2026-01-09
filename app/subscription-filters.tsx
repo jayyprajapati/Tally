@@ -23,6 +23,8 @@ type Filters = {
     status: string;
     credential: string;
     accessType: 'all' | Subscription['accessType'];
+    itemType: 'all' | 'recurring' | 'oneTime';
+    payment: 'all' | 'user' | 'notUser';
 };
 
 const defaultFilters: Filters = {
@@ -31,13 +33,16 @@ const defaultFilters: Filters = {
     status: 'active',
     credential: 'all',
     accessType: 'all',
+    itemType: 'all',
+    payment: 'all',
 };
 
 export default function SubscriptionFiltersScreen() {
     const router = useRouter();
     const params = useLocalSearchParams<{ filters?: string }>();
     const [credentials, setCredentials] = useState<Credential[]>([]);
-    const initialFilters: Filters = params.filters ? JSON.parse(params.filters) : defaultFilters;
+    const parsedFilters = params.filters ? JSON.parse(params.filters) : {};
+    const initialFilters: Filters = { ...defaultFilters, ...parsedFilters };
     const [filters, setFilters] = useState<Filters>(initialFilters);
     const [visible, setVisible] = useState(true);
 
@@ -115,6 +120,21 @@ export default function SubscriptionFiltersScreen() {
 
                 <View style={styles.section}>
                     <Text variant="caption" color={colors.textSecondary} style={styles.sectionLabel}>
+                        Item type
+                    </Text>
+                    {renderOption('All items', filters.itemType === 'all', () =>
+                        setFilters((prev) => ({ ...prev, itemType: 'all' })),
+                    )}
+                    {renderOption('Recurring', filters.itemType === 'recurring', () =>
+                        setFilters((prev) => ({ ...prev, itemType: 'recurring' })),
+                    )}
+                    {renderOption('One-time', filters.itemType === 'oneTime', () =>
+                        setFilters((prev) => ({ ...prev, itemType: 'oneTime' })),
+                    )}
+                </View>
+
+                <View style={styles.section}>
+                    <Text variant="caption" color={colors.textSecondary} style={styles.sectionLabel}>
                         Status
                     </Text>
                     {renderOption('All statuses', filters.status === 'all', () =>
@@ -139,6 +159,21 @@ export default function SubscriptionFiltersScreen() {
                     )}
                     {renderOption('Shared', filters.accessType === 'shared', () =>
                         setFilters((prev) => ({ ...prev, accessType: 'shared' })),
+                    )}
+                </View>
+
+                <View style={styles.section}>
+                    <Text variant="caption" color={colors.textSecondary} style={styles.sectionLabel}>
+                        Payment
+                    </Text>
+                    {renderOption('All payments', filters.payment === 'all', () =>
+                        setFilters((prev) => ({ ...prev, payment: 'all' })),
+                    )}
+                    {renderOption('Paid by you', filters.payment === 'user', () =>
+                        setFilters((prev) => ({ ...prev, payment: 'user' })),
+                    )}
+                    {renderOption('Not paid by you', filters.payment === 'notUser', () =>
+                        setFilters((prev) => ({ ...prev, payment: 'notUser' })),
                     )}
                 </View>
 

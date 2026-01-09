@@ -403,7 +403,9 @@ export default function AddSubscriptionScreen() {
                   }}
                   style={[styles.segment, billingType === type && styles.segmentSelected]}>
                   <Text style={[styles.segmentText, billingType === type && styles.segmentTextSelected]}>
-                    {type.charAt(0).toUpperCase() + type.slice(1)}
+                    {type === 'lifetime'
+                      ? 'One-time'
+                      : type.charAt(0).toUpperCase() + type.slice(1)}
                   </Text>
                 </Pressable>
               ))}
@@ -569,86 +571,90 @@ export default function AddSubscriptionScreen() {
             )}
           </View>
 
-          <View style={styles.fieldGroup}>
-            <View style={styles.reminderHeader}>
-              <Text style={styles.label}>Planned to stop</Text>
-              <Switch
-                value={hasStopDate}
-                onValueChange={(next) => {
-                  setHasStopDate(next);
-                  if (!next) {
-                    setStopDate(null);
-                    setShowStopPicker(false);
-                  } else if (!stopDate) {
-                    setStopDate(getNextAlignedStopDate(billingType, startDate));
-                  }
-                }}
-              />
-            </View>
-            {hasStopDate ? (
-              <>
-                <Pressable style={styles.staticValue} onPress={() => setShowStopPicker(true)}>
-                  <Text style={styles.dateText}>
-                    {stopDate ? stopDate.toISOString().slice(0, 10) : 'Select stop date'}
-                  </Text>
-                </Pressable>
-                {showStopPicker && (
-                  <DateTimePicker
-                    value={stopDate ?? new Date(startDate.getTime() + 24 * 60 * 60 * 1000)}
-                    mode="date"
-                    display={Platform.OS === 'ios' ? 'spinner' : 'calendar'}
-                    onChange={(event: DateTimePickerEvent, date?: Date) => {
-                      if (event.type === 'dismissed') {
-                        setShowStopPicker(false);
-                        return;
-                      }
-                      if (date) {
-                        if (isStopDateAligned(billingType, startDate, date)) {
-                          setStopDate(date);
-                        } else {
-                          Alert.alert('Invalid stop date', 'Stop date must align with the billing cycle.');
-                        }
-                      }
+          {billingType !== 'lifetime' ? (
+            <View style={styles.fieldGroup}>
+              <View style={styles.reminderHeader}>
+                <Text style={styles.label}>Planned to stop</Text>
+                <Switch
+                  value={hasStopDate}
+                  onValueChange={(next) => {
+                    setHasStopDate(next);
+                    if (!next) {
+                      setStopDate(null);
                       setShowStopPicker(false);
-                    }}
-                  />
-                )}
-              </>
-            ) : null}
-          </View>
-
-          <View style={styles.fieldGroup}>
-            <View style={styles.reminderHeader}>
-              <Text style={styles.label}>Renewal reminder</Text>
-              <Switch
-                value={reminderEnabled}
-                onValueChange={(enabled) => {
-                  if (billingType === 'lifetime') {
-                    setReminderEnabled(false);
-                    return;
-                  }
-                  setReminderEnabled(enabled);
-                  if (!enabled) {
-                    setReminderNotificationId(undefined);
-                  }
-                }}
-              />
-            </View>
-            {reminderEnabled ? (
-              <View style={styles.chipRow}>
-                {reminderOptions.map((days) => (
-                  <Pressable
-                    key={days}
-                    onPress={() => setReminderDaysBefore(days)}
-                    style={[styles.chip, reminderDaysBefore === days && styles.chipSelected]}>
-                    <Text style={[styles.chipText, reminderDaysBefore === days && styles.chipTextSelected]}>
-                      {days} day{days === 1 ? '' : 's'} before
+                    } else if (!stopDate) {
+                      setStopDate(getNextAlignedStopDate(billingType, startDate));
+                    }
+                  }}
+                />
+              </View>
+              {hasStopDate ? (
+                <>
+                  <Pressable style={styles.staticValue} onPress={() => setShowStopPicker(true)}>
+                    <Text style={styles.dateText}>
+                      {stopDate ? stopDate.toISOString().slice(0, 10) : 'Select stop date'}
                     </Text>
                   </Pressable>
-                ))}
+                  {showStopPicker && (
+                    <DateTimePicker
+                      value={stopDate ?? new Date(startDate.getTime() + 24 * 60 * 60 * 1000)}
+                      mode="date"
+                      display={Platform.OS === 'ios' ? 'spinner' : 'calendar'}
+                      onChange={(event: DateTimePickerEvent, date?: Date) => {
+                        if (event.type === 'dismissed') {
+                          setShowStopPicker(false);
+                          return;
+                        }
+                        if (date) {
+                          if (isStopDateAligned(billingType, startDate, date)) {
+                            setStopDate(date);
+                          } else {
+                            Alert.alert('Invalid stop date', 'Stop date must align with the billing cycle.');
+                          }
+                        }
+                        setShowStopPicker(false);
+                      }}
+                    />
+                  )}
+                </>
+              ) : null}
+            </View>
+          ) : null}
+
+          {billingType !== 'lifetime' ? (
+            <View style={styles.fieldGroup}>
+              <View style={styles.reminderHeader}>
+                <Text style={styles.label}>Renewal reminder</Text>
+                <Switch
+                  value={reminderEnabled}
+                  onValueChange={(enabled) => {
+                    if (billingType === 'lifetime') {
+                      setReminderEnabled(false);
+                      return;
+                    }
+                    setReminderEnabled(enabled);
+                    if (!enabled) {
+                      setReminderNotificationId(undefined);
+                    }
+                  }}
+                />
               </View>
-            ) : null}
-          </View>
+              {reminderEnabled ? (
+                <View style={styles.chipRow}>
+                  {reminderOptions.map((days) => (
+                    <Pressable
+                      key={days}
+                      onPress={() => setReminderDaysBefore(days)}
+                      style={[styles.chip, reminderDaysBefore === days && styles.chipSelected]}>
+                      <Text style={[styles.chipText, reminderDaysBefore === days && styles.chipTextSelected]}>
+                        {days} day{days === 1 ? '' : 's'} before
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              ) : null}
+            </View>
+          ) : null}
 
           <View style={styles.fieldGroup}>
             <Text style={styles.label}>Notes (optional)</Text>

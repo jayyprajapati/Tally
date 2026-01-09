@@ -1,6 +1,6 @@
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import React, { useEffect, useState } from 'react';
 import {
     Alert,
     KeyboardAvoidingView,
@@ -23,6 +23,7 @@ const formatDate = (date: Date) => date.toISOString().slice(0, 10);
 
 export default function AddOneTimeScreen() {
     const router = useRouter();
+    const params = useLocalSearchParams<{ item?: string }>();
     const [name, setName] = useState('');
     const [platform, setPlatform] = useState('');
     const [category, setCategory] = useState<string>('General');
@@ -30,6 +31,23 @@ export default function AddOneTimeScreen() {
     const [date, setDate] = useState<Date>(new Date());
     const [showDatePicker, setShowDatePicker] = useState(false);
     const [submitting, setSubmitting] = useState(false);
+    const [editingId, setEditingId] = useState<string | number | null>(null);
+
+    useEffect(() => {
+        const raw = Array.isArray(params.item) ? params.item[0] : params.item;
+        if (!raw) return;
+        try {
+            const parsed = JSON.parse(raw) as OneTimeItem;
+            setEditingId(parsed.id);
+            setName(parsed.name);
+            setPlatform(parsed.platform);
+            setCategory(parsed.category);
+            setAmount(String(parsed.amount));
+            setDate(new Date(parsed.date));
+        } catch {
+            // ignore invalid payloads
+        }
+    }, [params.item]);
 
     const handleSave = async () => {
         if (submitting) return;
@@ -50,7 +68,7 @@ export default function AddOneTimeScreen() {
         }
 
         const payload: OneTimeItem = {
-            id: Date.now().toString(),
+            id: editingId ? String(editingId) : Date.now().toString(),
             name: name.trim(),
             platform: platform.trim(),
             category,
@@ -160,7 +178,7 @@ export default function AddOneTimeScreen() {
                             style={[styles.button, styles.saveButton, submitting && styles.saveDisabled]}
                             onPress={handleSave}
                             disabled={submitting}>
-                            <Text style={styles.saveText}>{submitting ? 'Saving…' : 'Save'}</Text>
+                            <Text style={styles.saveText}>{submitting ? 'Saving…' : editingId ? 'Update' : 'Save'}</Text>
                         </Pressable>
                     </View>
                 </ScrollView>
